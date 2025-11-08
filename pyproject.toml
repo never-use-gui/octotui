@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "octotui"
-version = "0.1.4"
+version = "0.1.5"
 description = "A blazing-fast TUI replacement for GitKraken - manage your Git repos with style!"
 readme = "README.md"
 requires-python = ">=3.11"
