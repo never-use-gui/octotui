@@ -20,7 +20,7 @@
 ---
 
 ## 🚀 OctoTUI
-
+![octotui.png](octotui.png)
 > **We love GitKraken so much, we wanted to bring that beautiful experience to the terminal!**
 
 GitKraken is amazing - it's gorgeous, intuitive, and makes Git feel approachable. But as terminal enthusiasts, we found ourselves constantly context-switching between our editor and GitKraken. We wanted that same delightful experience without ever leaving the command line.
