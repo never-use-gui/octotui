@@ -154,7 +154,7 @@ uv pip install 'gac>=0.18.0'
 
 - **[Textual](https://textual.textualize.io/)**: Modern TUI framework
 - **[GitPython](https://gitpython.readthedocs.io/)**: Git operations
-- **[GAC](https://github.com/Dicklesworthstone/gac)**: AI commit generation
+- **[GAC](https://github.com/cellwebb/gac)**: AI commit generation
 - **[Ruff](https://github.com/astral-sh/ruff)**: Lightning-fast Python linter
 
 ## 📜 License
