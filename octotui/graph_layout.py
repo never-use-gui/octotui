@@ -8,7 +8,7 @@ that parallel branches are displayed side-by-side without overlap.
 from typing import Dict, List, Set, Optional, Tuple
 from collections import deque, defaultdict
 import git
-from tentacle.graph_data import (
+from octotui.graph_data import (
     CommitGraph, CommitNode, GraphEdge, GitRef, RefType, CommitType
 )
 
@@ -49,9 +49,15 @@ class GraphLayoutEngine:
         return self.graph
     
     def _load_commits(self, max_commits: int) -> None:
-        """Load commits from repository."""
+        """Load commits from repository.
+
+        Designed to be resilient to funky repo states (e.g. merge in progress,
+        detached HEAD). Failures should degrade gracefully instead of
+        exploding the whole TUI.
+        """
         try:
-            # Get all commits in topological order
+            # Get commits in topological order. In weird states (e.g. brand-new repo
+            # or corrupt refs), this may raise; we catch and fall back.
             commits = list(self.repo.iter_commits('--all', max_count=max_commits))
             
             for row, commit in enumerate(commits):
@@ -88,9 +94,10 @@ class GraphLayoutEngine:
                     if parent_sha in self.graph.commits:
                         self.graph.commits[parent_sha].child_shas.append(sha)
         
-        except Exception as e:
-            # If loading fails, create empty graph
-            pass
+        except Exception:
+            # If loading fails (e.g. no commits yet), keep an empty graph.
+            # Caller will render a friendly message instead of crashing.
+            self.graph = self.graph or CommitGraph()
     
     def _load_refs(self) -> None:
         """Load branches and tags from repository."""
@@ -145,6 +152,7 @@ class GraphLayoutEngine:
                 pass
         
         except Exception:
+            # Ref loading should never be fatal to the UI.
             pass
     
     def _calculate_layout(self) -> None:

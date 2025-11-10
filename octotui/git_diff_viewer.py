@@ -17,11 +17,12 @@ from textual.widgets import (
 )
 from textual.containers import Horizontal, Vertical, Container, VerticalScroll
 from textual.widgets.tree import TreeNode
-from tentacle.git_status_sidebar import GitStatusSidebar, Hunk
-from tentacle.animated_logo import AnimatedLogo
-from tentacle.gac_integration import GACIntegration
-from tentacle.gac_config_modal import GACConfigModal
-from tentacle.diff_markdown import DiffMarkdown, DiffMarkdownConfig
+from octotui.git_status_sidebar import GitStatusSidebar, Hunk
+from octotui.octotui_logo import OctotuiLogo
+from octotui.gac_integration import GACIntegration
+from octotui.gac_config_modal import GACConfigModal
+from octotui.diff_markdown import DiffMarkdown, DiffMarkdownConfig
+from octotui.commit_graph import CommitGraphWidget
 from textual.widget import Widget
 from textual.screen import ModalScreen
 from textual.widgets import OptionList
@@ -50,7 +51,7 @@ class GitDiffHistoryTabs(Widget):
             with TabPane("Diff View"):
                 yield VerticalScroll(id="diff-content")
             with TabPane("Commit Graph", id="graph-tab"):
-                # Commit graph will be mounted here dynamically
+                # Commit graph will be mounted here dynamically when tab is shown
                 yield Container(id="graph-container")
             with TabPane("Commit History"):
                 yield VerticalScroll(id="history-content")
@@ -389,6 +390,7 @@ class GitDiffViewer(App):
         self.populate_unstaged_changes()
         self.populate_staged_changes()
         self.populate_commit_history()
+        self.ensure_commit_graph_mounted()
         
         # If no files are selected, show a message in the diff panel
         try:
@@ -1370,16 +1372,49 @@ class GitDiffViewer(App):
         except Exception as e:
             self.notify(f"Error switching to staged tab: {e}", severity="error")
     
-    def action_switch_to_graph(self) -> None:
-        """Switch to the Commit Graph tab."""
+    def ensure_commit_graph_mounted(self) -> None:
+        """Ensure the CommitGraphWidget is mounted into the graph container once.
+
+        This is idempotent and safe to call multiple times. It gracefully
+        handles missing/invalid repos (e.g. during merge conflicts or in
+        non-git directories) by showing a friendly message instead of dying.
+        """
         try:
-            # The graph is in the center panel (GitDiffHistoryTabs), not status-tabs
-            # We need to find the TabbedContent in the center panel
+            container = self.query_one("#graph-container", Container)
+        except Exception:
+            return
+
+        # If graph already mounted, do nothing
+        if any(isinstance(child, CommitGraphWidget) for child in container.children):
+            return
+
+        # If repo is unavailable, show a message
+        if not self.git_sidebar or not self.git_sidebar.repo:
+            if not container.children:
+                container.mount(Static("No git repository detected", classes="info"))
+            return
+
+        try:
+            graph = CommitGraphWidget(self.git_sidebar.repo)
+            container.mount(graph)
+        except Exception as e:
+            # Fail gracefully; don't break the rest of the UI
+            container.mount(
+                Static(f"Error loading commit graph: {e}", classes="error")
+            )
+
+    def action_switch_to_graph(self) -> None:
+        """Switch to the Commit Graph tab and ensure graph is mounted."""
+        try:
+            self.ensure_commit_graph_mounted()
             tabbed_content = self.query(TabbedContent)
             for tabs in tabbed_content:
-                if tabs.query_one("#graph-tab", TabPane):
-                    tabs.active = "graph-tab"
-                    break
+                try:
+                    if tabs.query_one("#graph-tab", TabPane):
+                        tabs.active = "graph-tab"
+                        break
+                except Exception:
+                    continue
         except Exception as e:
             self.notify(f"Error switching to graph tab: {e}", severity="error")
 

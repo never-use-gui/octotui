@@ -12,7 +12,7 @@ from textual.widgets import Static, Input, Button, Label, Select
 from textual.containers import Container, Vertical, Horizontal
 from textual.binding import Binding
 
-from tentacle.graph_data import CommitNode
+from octotui.graph_data import CommitNode
 
 
 class InputModal(ModalScreen):

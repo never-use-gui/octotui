@@ -13,8 +13,8 @@ from textual.containers import Horizontal, VerticalScroll
 from textual.binding import Binding
 import git
 
-from tentacle.graph_data import CommitGraph, CommitNode, GraphFilter
-from tentacle.graph_layout import GraphLayoutEngine
+from octotui.graph_data import CommitGraph, CommitNode, GraphFilter
+from octotui.graph_layout import GraphLayoutEngine
 
 
 class GitGraphRenderer:
