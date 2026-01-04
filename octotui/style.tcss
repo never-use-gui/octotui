@@ -233,6 +233,17 @@ GitDiffHistoryTabs {
     width: 1fr;
 }
 
+.branch-input {
+    width: 1fr;
+    margin: 0 1 0 0;
+}
+
+.hint-text {
+    margin: 0 0 1 0;
+    color: #6c7086;
+    text-align: center;
+}
+
 /* Hunk styling */
 .hunk-container {
     layout: vertical;

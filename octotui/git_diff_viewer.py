@@ -57,19 +57,73 @@ class GitDiffHistoryTabs(Widget):
         ]
         
         with TabbedContent(id="main-tabs"):
-            # 1 = Files
+            # 1 = Status
+            with TabPane("Status", id="status-tab"):
+                yield VerticalScroll(
+                    Static("📊 Repository Status", classes="settings-title"),
+                    Static(""),
+                    Horizontal(
+                        Static("Branch: ", classes="status-label"),
+                        Static("loading...", id="current-branch", classes="status-value"),
+                        classes="status-row",
+                    ),
+                    Horizontal(
+                        Static("Remote: ", classes="status-label"),
+                        Static("loading...", id="remote-info", classes="status-value"),
+                        classes="status-row",
+                    ),
+                    Horizontal(
+                        Static("Sync: ", classes="status-label"),
+                        Static("loading...", id="sync-status", classes="status-value"),
+                        classes="status-row",
+                    ),
+                    Horizontal(
+                        Static("Changes: ", classes="status-label"),
+                        Static("loading...", id="repo-status", classes="status-value"),
+                        classes="status-row",
+                    ),
+                    Static(""),
+                    Static("🔀 Branch Operations", classes="settings-title"),
+                    Static(""),
+                    Label("Switch Branch:", classes="settings-label"),
+                    Select(
+                        [("loading...", "loading")],
+                        id="branch-select",
+                        classes="settings-select",
+                    ),
+                    Static(""),
+                    Label("Create New Branch:", classes="settings-label"),
+                    Horizontal(
+                        Input(placeholder="new-branch-name", id="new-branch-input", classes="settings-input branch-input"),
+                        Button("➕ Create", id="create-branch-button", classes="action-button"),
+                        classes="button-row",
+                    ),
+                    Static(""),
+                    Static("🔄 Remote Operations", classes="settings-title"),
+                    Static(""),
+                    Horizontal(
+                        Button("⬇️ Pull", id="pull-button", classes="action-button"),
+                        Button("⬆️ Push", id="push-button", classes="action-button"),
+                        Button("🔄 Fetch", id="fetch-button", classes="action-button"),
+                        classes="button-row",
+                    ),
+                    id="status-content",
+                    classes="settings-section",
+                )
+            # 2 = Files
             with TabPane("Files", id="tree-tab"):
                 yield VerticalScroll(
+                    Static("[dim italic]Hint: press [bold]e[/bold] to open your configured editor (Settings tab)[/dim italic]", classes="hint-text"),
                     Tree("Files", id="file-tree"),
                     id="tree-content"
                 )
-            # 2 = Unstaged
+            # 3 = Unstaged
             with TabPane("Unstaged", id="unstaged-tab"):
                 yield VerticalScroll(id="unstaged-content")
-            # 3 = Staged
+            # 4 = Staged
             with TabPane("Staged", id="staged-tab"):
                 yield VerticalScroll(id="staged-content")
-            # 4 = Commit
+            # 5 = Commit
             with TabPane("Commit", id="commit-tab"):
                 yield Vertical(
                     Label("Commit Message (Subject):", classes="commit-label"),
@@ -93,53 +147,12 @@ class GitDiffHistoryTabs(Widget):
                     id="commit-section",
                     classes="commit-section",
                 )
-            # 5 = Graph
+            # 6 = Graph
             with TabPane("Graph", id="graph-tab"):
                 yield Container(id="graph-container")
-            # 6 = History
+            # 7 = History
             with TabPane("History", id="history-tab"):
                 yield VerticalScroll(id="history-content")
-            # 7 = Status
-            with TabPane("Status", id="status-tab"):
-                yield VerticalScroll(
-                    Static("📊 Repository Status", classes="settings-title"),
-                    Static(""),
-                    Horizontal(
-                        Static("Branch: ", classes="status-label"),
-                        Static("loading...", id="current-branch", classes="status-value"),
-                        classes="status-row",
-                    ),
-                    Horizontal(
-                        Static("Remote: ", classes="status-label"),
-                        Static("loading...", id="remote-info", classes="status-value"),
-                        classes="status-row",
-                    ),
-                    Horizontal(
-                        Static("Status: ", classes="status-label"),
-                        Static("loading...", id="repo-status", classes="status-value"),
-                        classes="status-row",
-                    ),
-                    Static(""),
-                    Static("🔀 Branch Operations", classes="settings-title"),
-                    Static(""),
-                    Label("Switch Branch:", classes="settings-label"),
-                    Select(
-                        [("loading...", "loading")],
-                        id="branch-select",
-                        classes="settings-select",
-                    ),
-                    Static(""),
-                    Static("🔄 Remote Operations", classes="settings-title"),
-                    Static(""),
-                    Horizontal(
-                        Button("⬇️ Pull", id="pull-button", classes="action-button"),
-                        Button("⬆️ Push", id="push-button", classes="action-button"),
-                        Button("🔄 Fetch", id="fetch-button", classes="action-button"),
-                        classes="button-row",
-                    ),
-                    id="status-content",
-                    classes="settings-section",
-                )
             # 8 = Settings
             with TabPane("Settings", id="settings-tab"):
                 yield VerticalScroll(
@@ -261,13 +274,13 @@ class HelpModal(ModalScreen):
         """Generate the help content with all keybindings."""
         help_text = """
 [help-section-title]📑 View Switching (1-8)[/help-section-title]
-[help-key]1[/help-key]             Files (tree view)
-[help-key]2[/help-key]             Unstaged changes
-[help-key]3[/help-key]             Staged changes
-[help-key]4[/help-key]             Commit
-[help-key]5[/help-key]             Commit Graph
-[help-key]6[/help-key]             Commit History
-[help-key]7[/help-key]             Status (branch/remote info)
+[help-key]1[/help-key]             Status (branch/remote info)
+[help-key]2[/help-key]             Files (tree view)
+[help-key]3[/help-key]             Unstaged changes
+[help-key]4[/help-key]             Staged changes
+[help-key]5[/help-key]             Commit
+[help-key]6[/help-key]             Commit Graph
+[help-key]7[/help-key]             Commit History
 [help-key]8[/help-key]             Settings
 
 [help-section-title]📁 File Navigation[/help-section-title]
@@ -438,13 +451,13 @@ class GitDiffViewer(App):
         ("h", "show_help", "Show Help"),
         ("r", "refresh_branches", "Refresh"),
         # View switching (1-8)
-        ("1", "switch_to_tree", "Files"),
-        ("2", "switch_to_unstaged", "Unstaged"),
-        ("3", "switch_to_staged", "Staged"),
-        ("4", "switch_to_commit", "Commit"),
-        ("5", "switch_to_graph", "Graph"),
-        ("6", "switch_to_history", "History"),
-        ("7", "switch_to_status", "Status"),
+        ("1", "switch_to_status", "Status"),
+        ("2", "switch_to_tree", "Files"),
+        ("3", "switch_to_unstaged", "Unstaged"),
+        ("4", "switch_to_staged", "Staged"),
+        ("5", "switch_to_commit", "Commit"),
+        ("6", "switch_to_graph", "Graph"),
+        ("7", "switch_to_history", "History"),
         ("8", "switch_to_settings", "Settings"),
         # File navigation
         ("left", "prev_file", "← Prev"),
@@ -820,6 +833,9 @@ class GitDiffViewer(App):
         elif button_id == "fetch-button":
             self.action_fetch_changes()
 
+        elif button_id == "create-branch-button":
+            self._create_new_branch()
+
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         """Handle tab activation to populate content."""
         # Use pane.id which is what we set in TabPane(id=...)
@@ -867,7 +883,10 @@ class GitDiffViewer(App):
                 pass
         elif event.select.id == "branch-select":
             branch_name = event.value
-            if branch_name:
+            current_branch = self.git_sidebar.get_current_branch()
+            
+            # Skip if already on this branch (avoids spurious errors when populating)
+            if branch_name and branch_name != current_branch:
                 # Check if repo is dirty before switching
                 if self.git_sidebar.is_dirty():
                     self.notify(
@@ -875,7 +894,6 @@ class GitDiffViewer(App):
                         severity="error",
                     )
                     # Reset to current branch
-                    current_branch = self.git_sidebar.get_current_branch()
                     event.select.value = current_branch
                 else:
                     # Attempt to switch branch
@@ -1308,6 +1326,45 @@ class GitDiffViewer(App):
         except Exception as e:
             self.notify(f"Fetch failed: {e}", severity="error")
 
+    def _create_new_branch(self) -> None:
+        """Create a new branch from the current HEAD."""
+        try:
+            branch_input = self.query_one("#new-branch-input", Input)
+            branch_name = branch_input.value.strip()
+            
+            if not branch_name:
+                self.notify("Please enter a branch name", severity="warning")
+                return
+            
+            # Validate branch name (no spaces, etc.)
+            if " " in branch_name:
+                self.notify("Branch name cannot contain spaces", severity="error")
+                return
+            
+            if not self.git_sidebar.repo:
+                self.notify("No repository loaded", severity="error")
+                return
+            
+            try:
+                # Create and checkout the new branch
+                self.git_sidebar.repo.create_head(branch_name)
+                self.git_sidebar.repo.heads[branch_name].checkout()
+                
+                # Clear the input
+                branch_input.value = ""
+                
+                # Refresh UI
+                self.git_sidebar._invalidate_cache()
+                self._populate_status_tab()
+                self.populate_file_tree()
+                self.update_status_bar()
+                
+                self.notify(f"✅ Created and switched to branch: {branch_name}", severity="information")
+            except Exception as e:
+                self.notify(f"Failed to create branch: {e}", severity="error")
+        except Exception as e:
+            self.notify(f"Error creating branch: {e}", severity="error")
+
     def action_gac_config(self) -> None:
         """Show GAC configuration modal."""
 
@@ -1492,28 +1549,50 @@ class GitDiffViewer(App):
             current_branch = self.git_sidebar.get_current_branch() or "(detached)"
             branch_label.update(f"[bold #9ece6a]{current_branch}[/]")
             
-            # Update remote info
+            # Update remote info and sync status
             remote_label = self.query_one("#remote-info", Static)
+            sync_label = self.query_one("#sync-status", Static)
+            
+            tracking = None
             try:
                 if self.git_sidebar.repo:
                     tracking = self.git_sidebar.repo.active_branch.tracking_branch()
                     if tracking:
                         remote_label.update(f"[#7aa2f7]{tracking}[/]")
+                        
+                        # Calculate ahead/behind
+                        ahead, behind = self._get_ahead_behind_counts(tracking)
+                        sync_parts = []
+                        
+                        if ahead == 0 and behind == 0:
+                            sync_label.update("[#9ece6a]\u2713 Up to date[/]")
+                        else:
+                            if ahead > 0:
+                                sync_parts.append(f"[#9ece6a]\u2191{ahead} ahead[/]")
+                            if behind > 0:
+                                sync_parts.append(f"[#f7768e]\u2193{behind} behind[/]")
+                            if ahead > 0 and behind > 0:
+                                sync_label.update(f"[#e0af68]\u21c5 Diverged[/] ({', '.join(sync_parts)})")
+                            else:
+                                sync_label.update(", ".join(sync_parts))
                     else:
                         remote_label.update("[dim]No upstream set[/]")
+                        sync_label.update("[dim]No tracking branch[/]")
                 else:
                     remote_label.update("[dim]No repository[/]")
+                    sync_label.update("[dim]—[/]")
             except Exception:
                 remote_label.update("[dim]No upstream set[/]")
+                sync_label.update("[dim]—[/]")
             
-            # Update repo status
+            # Update repo status (file changes)
             status_label = self.query_one("#repo-status", Static)
             file_data = self.git_sidebar.collect_file_data()
             staged = len(file_data.get("staged_files", []))
             unstaged = len(file_data.get("unstaged_files", []))
             
             if staged == 0 and unstaged == 0:
-                status_label.update("[#9ece6a]✓ Clean[/]")
+                status_label.update("[#9ece6a]\u2713 Clean[/]")
             else:
                 parts = []
                 if staged > 0:
@@ -1534,6 +1613,30 @@ class GitDiffViewer(App):
                 
         except Exception as e:
             pass  # Silently handle errors
+
+    def _get_ahead_behind_counts(self, tracking_branch) -> tuple[int, int]:
+        """Get the number of commits ahead and behind the tracking branch.
+        
+        Returns:
+            Tuple of (ahead, behind) counts
+        """
+        try:
+            if not self.git_sidebar.repo:
+                return (0, 0)
+            
+            repo = self.git_sidebar.repo
+            local_commit = repo.head.commit
+            remote_commit = tracking_branch.commit
+            
+            # Count commits ahead (local commits not in remote)
+            ahead = sum(1 for _ in repo.iter_commits(f"{tracking_branch}..HEAD"))
+            
+            # Count commits behind (remote commits not in local)
+            behind = sum(1 for _ in repo.iter_commits(f"HEAD..{tracking_branch}"))
+            
+            return (ahead, behind)
+        except Exception:
+            return (0, 0)
 
     def action_show_commit_tab(self) -> None:
         """Switch to the Commit Message tab."""
