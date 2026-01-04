@@ -6,18 +6,11 @@ Screen {
     color: $text;
 }
 
-/* Logo styling */
-AnimatedLogo .logo-text {
-    text-style: bold;
-    color: #bb9af7;
-    text-align: center;
-    margin: 0 0;
-}
-
-Header {
-    color: $text;
-    background: transparent;
-    text-style: bold;
+OctotuiLogo {
+    height: auto;
+    max-height: 4;
+    width: 100%;
+    content-align: center middle;
 }
 
 .panel-header, #diff-header {
@@ -30,73 +23,27 @@ Header {
     max-height: 2;
 }
 
-#sidebar {
-    width: 20%;
+GitDiffHistoryTabs {
     height: 1fr;
-    border: solid #6c7086;
-    background: transparent;
-    overflow: auto;
+    width: 100%;
 }
 
-#diff-panel {
-    width: 50%;
-    height: 1fr;
-    border: solid #6c7086;
-    background: transparent;
-    overflow: auto;
+/* Status bar at the bottom */
+#status-bar {
+    dock: bottom;
+    height: 1;
+    width: 100%;
+    background: $surface;
+    color: $text;
+    content-align: center middle;
+    text-align: center;
 }
 
-#status-panel {
-    width: 30%;
-    height: 1fr;
-    border: solid #6c7086;
-    background: transparent;
-    overflow-y: scroll;
-    scrollbar-size: 1 1;
-    scrollbar-color: #9399b2;
-}
-
-/* Status tabs container */
-#status-tabs {
-    height: 1fr;
-    background: transparent;
-}
-
-#unstaged-tab, #staged-tab {
-    background: transparent;
-}
-
-#unstaged-tab > VerticalScroll, #staged-tab > VerticalScroll {
-    height: 1fr;
-    background: transparent;
-    overflow-y: auto;
-    scrollbar-size: 1 1;
-    scrollbar-color: #9399b2;
-}
-
-.hint {
-    color: #9399b2;
-    text-style: italic;
-    padding: 0 1;
-    margin: 0 0 1 0;
-}
-
-
-
-#unstaged-tree, #staged-tree {
-    height: 1fr;
-    background: transparent;
-    overflow-y: auto;
-    scrollbar-size: 1 1;
-    scrollbar-color: #9399b2;
-}
-
-#file-tree {
-    height: 1fr;
-    background: transparent;
-    overflow-y: auto;
-    scrollbar-size: 1 1;
-    scrollbar-color: #9399b2;
+/* Focused button styling for Tab navigation */
+.button-focused {
+    background: #bb9af7;
+    color: #1a1b26;
+    text-style: bold;
 }
 
 #diff-content {
@@ -374,11 +321,6 @@ TabbedContent > TabPane {
     color: $text;
     width: 100%;
     padding: 0 1;
-}
-
-Footer {
-    color: $text;
-    background: transparent;
 }
 
 Tabs {

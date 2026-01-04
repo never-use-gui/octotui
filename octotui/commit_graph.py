@@ -473,13 +473,8 @@ class CommitGraphLine(Static):
         padding: 0 1;
         margin: 0;
         background: transparent;
-        text-overflow: ellipsis;
-        overflow-x: hidden;
-        overflow-y: hidden;
-        white-space: nowrap;
+        overflow: hidden;
         color: #cdd6f4;
-        max-width: 100%;
-        box-sizing: border-box;
     }
     
     CommitGraphLine:hover {

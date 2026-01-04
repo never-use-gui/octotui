@@ -1,13 +1,8 @@
-import os
 from pathlib import Path
-from typing import Optional, Dict
 from textual.app import App, ComposeResult
 from textual.widgets import (
     Static,
-    Header,
-    Footer,
     Button,
-    Tree,
     Label,
     Input,
     TabbedContent,
@@ -16,13 +11,12 @@ from textual.widgets import (
     TextArea,
 )
 from textual.containers import Horizontal, Vertical, Container, VerticalScroll
-from textual.widgets.tree import TreeNode
 from octotui.git_status_sidebar import GitStatusSidebar, Hunk
-from octotui.octotui_logo import OctotuiLogo
 from octotui.gac_integration import GACIntegration
 from octotui.gac_config_modal import GACConfigModal
 from octotui.diff_markdown import DiffMarkdown, DiffMarkdownConfig
 from octotui.commit_graph import CommitGraphWidget
+from octotui.octotui_logo import OctotuiLogo
 from textual.widget import Widget
 from textual.screen import ModalScreen
 from textual.widgets import OptionList
@@ -47,15 +41,15 @@ class GitDiffHistoryTabs(Widget):
 
     def compose(self) -> ComposeResult:
         """Create the tabbed content with diff view, commit history, and commit message tabs."""
-        with TabbedContent():
-            with TabPane("Diff View"):
+        with TabbedContent(id="main-tabs"):
+            with TabPane("Diff View", id="diff-tab"):
                 yield VerticalScroll(id="diff-content")
             with TabPane("Commit Graph", id="graph-tab"):
                 # Commit graph will be mounted here dynamically when tab is shown
                 yield Container(id="graph-container")
-            with TabPane("Commit History"):
+            with TabPane("Commit History", id="history-tab"):
                 yield VerticalScroll(id="history-content")
-            with TabPane("Commit Message"):
+            with TabPane("Commit Message", id="commit-tab"):
                 yield Vertical(
                     Label("Commit Message (Subject):", classes="commit-label"),
                     Horizontal(
@@ -76,26 +70,6 @@ class GitDiffHistoryTabs(Widget):
                     Button("Commit", id="commit-button", classes="commit-button"),
                     id="commit-section",
                     classes="commit-section",
-                )
-
-
-class GitStatusTabs(Widget):
-    """A widget that contains tabbed unstaged and staged changes."""
-
-    def compose(self) -> ComposeResult:
-        """Create the tabbed content with unstaged and staged changes tabs."""
-        with TabbedContent(id="status-tabs"):
-            with TabPane("Unstaged Changes", id="unstaged-tab"):
-                yield VerticalScroll(
-                    Static(
-                        "Hint: Select a file and press 's' to stage the entire file",
-                        classes="hint",
-                    ),
-                    Tree("Unstaged", id="unstaged-tree"),
-                )
-            with TabPane("Staged Changes", id="staged-tab"):
-                yield VerticalScroll(
-                    Tree("Staged", id="staged-tree"),
                 )
 
 
@@ -165,45 +139,47 @@ class HelpModal(ModalScreen):
         """Generate the help content with all keybindings."""
         help_text = """
 [help-section-title]📁 File Navigation[/help-section-title]
-[help-key]↑/↓[/help-key]           Navigate through files and hunks
-[help-key]Enter[/help-key]         Select file to view diff
-[help-key]Tab[/help-key]           Navigate through UI elements (Shift+Tab to go backwards)
+[help-key]←/→[/help-key]          Navigate through files (previous/next)
+[help-key]Tab[/help-key]           Cycle through hunk buttons (Stage/Discard/Unstage)
+[help-key]Enter[/help-key]         Press the currently focused button
 
-[help-section-title]📑 Tab Navigation[/help-section-title]
-[help-key]1 or Ctrl+1[/help-key]  Switch to Unstaged Changes tab
-[help-key]2 or Ctrl+2[/help-key]  Switch to Staged Changes tab
+[help-section-title]📑 View Switching[/help-section-title]
+[help-key]1 or Ctrl+1[/help-key]  View Unstaged files
+[help-key]2 or Ctrl+2[/help-key]  View Staged files
+[help-key]3 or Ctrl+3[/help-key]  View Commit Graph
 
 [help-section-title]🔄 Git Operations[/help-section-title]
-[help-key]s[/help-key]             Stage selected file (works from any tab)
-[help-key]u[/help-key]             Unstage selected file (works from any tab)
+[help-key]s[/help-key]             Stage current file
+[help-key]u[/help-key]             Unstage current file
 [help-key]a[/help-key]             Stage ALL unstaged changes
 [help-key]x[/help-key]             Unstage ALL staged changes
 [help-key]c[/help-key]             Commit staged changes
 
 [help-section-title]🌿 Branch Management[/help-section-title]
 [help-key]b[/help-key]             Show branch switcher
-[help-key]r[/help-key]             Refresh branches
+[help-key]r[/help-key]             Refresh
 
 [help-section-title]📡 Remote Operations[/help-section-title]
-[help-key]p[/help-key]                Push current branch
-[help-key]o[/help-key]                Pull latest changes
+[help-key]p[/help-key]             Push current branch
+[help-key]o[/help-key]             Pull latest changes
 
 [help-section-title]🤖 AI Integration (GAC)[/help-section-title]
 [help-key]Ctrl+G[/help-key]        Configure GAC (21+ providers supported)
-[help-key]g[/help-key]                Generate commit message with AI
+[help-key]g[/help-key]             Generate commit message with AI
 
 GAC supports OpenAI, Anthropic, Gemini, Mistral, Cohere, DeepSeek,
 Groq, Together, Cerebras, OpenRouter, xAI, Ollama, and more!
 
 [help-section-title]⚙️ Application[/help-section-title]
 [help-key]h[/help-key]             Show this help modal
-[help-key]r[/help-key]             Refresh git status and file tree
 [help-key]q[/help-key]             Quit application
 
-[help-section-title]💡 UI Layout[/help-section-title]
-The right panel uses a tabbed layout for Unstaged and Staged changes.
-Use the shortcuts above to quickly switch between tabs, or click them.
-Staging/unstaging operations work from either tab.
+[help-section-title]💡 Status Bar[/help-section-title]
+The bottom status bar shows:
+• Current view mode (STAGED/UNSTAGED)
+• Current file name
+• File position (e.g., 3/10)
+• Counts of staged and unstaged files
         """
         return Static(help_text)
 
@@ -308,9 +284,13 @@ class BranchSwitchModal(ModalScreen):
                     self.app.notify(
                         f"Switched to branch: {branch_name}", severity="information"
                     )
-                    # Refresh the UI
-                    self.app.populate_file_tree()
+                    # Refresh the UI with new navigation
+                    self.app.build_file_list()
                     self.app.populate_commit_history()
+                    if self.app.file_list:
+                        self.app._navigate_to_current_file()
+                    else:
+                        self.app.update_status_bar()
                     # Close the modal
                     self.app.pop_screen()
                 else:
@@ -327,7 +307,7 @@ class GitDiffViewer(App):
     THEME = "tokyo-night"
     BINDINGS = [
         ("q", "quit", "Quit"),
-        ("c", "commit", "Commit Staged Changes"),
+        ("c", "show_commit_tab", "Commit"),
         ("g", "gac_generate", "GAC Generate Message"),
         ("Ctrl+g", "gac_config", "Configure GAC"),
         ("h", "show_help", "Show Help"),
@@ -339,70 +319,64 @@ class GitDiffViewer(App):
         ("u", "unstage_selected_file", "Unstage Selected File"),
         ("p", "push_changes", "Push"),
         ("o", "pull_changes", "Pull"),
-        ("1", "switch_to_unstaged", "Switch to Unstaged Tab"),
-        ("2", "switch_to_staged", "Switch to Staged Tab"),
+        ("1", "switch_to_unstaged", "View Unstaged"),
+        ("2", "switch_to_staged", "View Staged"),
         ("3", "switch_to_graph", "Switch to Commit Graph"),
-        ("ctrl+1", "switch_to_unstaged", "Switch to Unstaged Tab"),
-        ("ctrl+2", "switch_to_staged", "Switch to Staged Tab"),
+        ("ctrl+1", "switch_to_unstaged", "View Unstaged"),
+        ("ctrl+2", "switch_to_staged", "View Staged"),
         ("ctrl+3", "switch_to_graph", "Switch to Commit Graph"),
+        ("left", "prev_file", "← Prev"),
+        ("right", "next_file", "→ Next"),
+        ("enter", "fire_focused_button", "Select"),
+        ("tab", "cycle_buttons", "Cycle Buttons"),
     ]
 
-    def __init__(self, repo_path: str = None):
+    def __init__(self, repo_path: str | None = None):
         super().__init__()
         self.dark = True
-        self.gac_integration = None
         self.git_sidebar = GitStatusSidebar(repo_path)
         self.gac_integration = GACIntegration(self.git_sidebar)
-        self.current_file = None
-        self.current_commit = None
-        self.file_tree = None
-        self.current_is_staged = None
-        self._current_displayed_file = None
-        self._current_displayed_is_staged = None
+        self.current_file: str | None = None
+        self.current_commit: str | None = None
+        self.current_is_staged: bool | None = None
+        self._current_displayed_file: str | None = None
+        self._current_displayed_is_staged: bool | None = None
+        # Navigation state
+        self.file_list: list[tuple[str, bool]] = []  # (file_path, is_staged)
+        self.current_file_index: int = 0
+        self.viewing_staged: bool = False  # False = viewing unstaged files
+        self.focused_button_index: int = 0  # For Tab cycling through buttons
 
     def compose(self) -> ComposeResult:
-        """Create the UI layout with three-panel view: file tree, diff view, and commit history."""
-        yield Header()
-
-        yield Horizontal(
-            # Left panel - File tree
-            Vertical(
-                OctotuiLogo(),
-                Static("File Tree", id="sidebar-header", classes="panel-header"),
-                Tree(os.path.basename(os.getcwd()), id="file-tree"),
-                id="sidebar",
-            ),
-            # Center panel - Tabbed diff view and commit history
-            Vertical(GitDiffHistoryTabs(), id="diff-panel"),
-            # Right panel - Git status functionality
-            Vertical(
-                # Tabbed content for Unstaged/Staged changes
-                GitStatusTabs(),
-                id="status-panel",
-            ),
-            id="main-content",
-        )
-        yield Footer()
+        """Create the UI layout with full-width diff panel and status bar."""
+        yield OctotuiLogo()
+        yield GitDiffHistoryTabs()
+        yield Static("", id="status-bar", markup=True)
 
     def on_mount(self) -> None:
         """Initialize the UI when app mounts."""
-        self.populate_file_tree()
-        self.populate_unstaged_changes()
-        self.populate_staged_changes()
         self.populate_commit_history()
         self.ensure_commit_graph_mounted()
         
-        # If no files are selected, show a message in the diff panel
-        try:
-            diff_content = self.query_one("#diff-content", VerticalScroll)
-            if not diff_content.children:
-                diff_content.mount(
-                    Static(
-                        "Select a file from the tree to view its diff", classes="info"
+        # Build file list and navigate to first file
+        self.build_file_list()
+        if self.file_list:
+            self._navigate_to_current_file()
+        else:
+            self.update_status_bar()
+            # Show message in diff panel if no files
+            try:
+                diff_content = self.query_one("#diff-content", VerticalScroll)
+                if not diff_content.children:
+                    diff_content.mount(
+                        Static(
+                            "No changes to display. Use ←/→ to navigate files, 1/2 to switch views.",
+                            classes="info",
+                        )
                     )
-                )
-        except Exception:
-            pass
+            except Exception:
+                pass
+        
         try:
             history_content = self.query_one("#history-content", VerticalScroll)
             if not history_content.children:
@@ -411,6 +385,134 @@ class GitDiffViewer(App):
                 )
         except Exception:
             pass
+
+    def build_file_list(self) -> None:
+        """Build the list of files to navigate through based on current view mode."""
+        self.file_list = []
+        if not self.git_sidebar.repo:
+            return
+        
+        try:
+            file_data = self.git_sidebar.collect_file_data()
+            
+            if self.viewing_staged:
+                # Get staged files
+                staged_files = file_data.get("staged_files", [])
+                for file_path in sorted(staged_files):
+                    self.file_list.append((file_path, True))
+            else:
+                # Get unstaged files (modified + untracked)
+                unstaged_files = file_data.get("unstaged_files", [])
+                for file_path in sorted(unstaged_files):
+                    self.file_list.append((file_path, False))
+        except Exception:
+            self.file_list = []
+
+    def update_status_bar(self) -> None:
+        """Update the status bar with current navigation state."""
+        try:
+            status_bar = self.query_one("#status-bar", Static)
+            
+            # Get file counts
+            file_data = self.git_sidebar.collect_file_data()
+            staged_count = len(file_data.get("staged_files", []))
+            unstaged_count = len(file_data.get("unstaged_files", []))
+            
+            # Build status bar content
+            view_mode = "STAGED" if self.viewing_staged else "UNSTAGED"
+            view_icon = "◀" if self.viewing_staged else "▶"
+            
+            if self.file_list:
+                file_path, _ = self.file_list[self.current_file_index]
+                file_name = file_path.split("/")[-1] if "/" in file_path else file_path
+                file_index = f"{self.current_file_index + 1}/{len(self.file_list)}"
+                
+                status_text = (
+                    f"{view_icon} [bold #bb9af7]{view_mode}[/] {view_icon} │ "
+                    f"[#c0caf5]{file_name}[/] │ {file_index} │ "
+                    f"[#9ece6a]■ {staged_count} staged[/]  [#a9a1e1]○ {unstaged_count} unstaged[/]"
+                )
+            else:
+                status_text = (
+                    f"{view_icon} [bold #bb9af7]{view_mode}[/] {view_icon} │ "
+                    f"[dim]No files[/] │ "
+                    f"[#9ece6a]■ {staged_count} staged[/]  [#a9a1e1]○ {unstaged_count} unstaged[/]"
+                )
+            
+            status_bar.update(status_text)
+        except Exception:
+            pass
+
+    def get_current_buttons(self) -> list[Button]:
+        """Get all action buttons in the current diff view."""
+        try:
+            diff_content = self.query_one("#diff-content", VerticalScroll)
+            buttons = list(diff_content.query(Button))
+            # Filter to only stage/unstage/discard buttons
+            action_buttons = [
+                btn for btn in buttons 
+                if btn.id and (
+                    btn.id.startswith("stage-hunk-") or 
+                    btn.id.startswith("unstage-hunk-") or 
+                    btn.id.startswith("discard-hunk-")
+                )
+            ]
+            return action_buttons
+        except Exception:
+            return []
+
+    def _navigate_to_current_file(self) -> None:
+        """Display the current file and update status bar."""
+        if self.file_list:
+            file_path, is_staged = self.file_list[self.current_file_index]
+            self.current_file = file_path
+            self.current_is_staged = is_staged
+            self.display_file_diff(file_path, is_staged, force_refresh=True)
+            # Reset focused button index when navigating to new file
+            self.focused_button_index = 0
+            self._update_button_focus()
+        self.update_status_bar()
+
+    def _update_button_focus(self) -> None:
+        """Update visual focus on buttons."""
+        buttons = self.get_current_buttons()
+        if buttons:
+            self.focused_button_index = min(self.focused_button_index, len(buttons) - 1)
+        for i, btn in enumerate(buttons):
+            if i == self.focused_button_index:
+                btn.add_class("button-focused")
+            else:
+                btn.remove_class("button-focused")
+
+    def action_prev_file(self) -> None:
+        """Navigate to previous file."""
+        if not self.file_list:
+            return
+        self.current_file_index = (self.current_file_index - 1) % len(self.file_list)
+        self._navigate_to_current_file()
+
+    def action_next_file(self) -> None:
+        """Navigate to next file."""
+        if not self.file_list:
+            return
+        self.current_file_index = (self.current_file_index + 1) % len(self.file_list)
+        self._navigate_to_current_file()
+
+    def action_cycle_buttons(self) -> None:
+        """Cycle through Stage/Discard/Unstage buttons on current hunk."""
+        buttons = self.get_current_buttons()
+        if not buttons:
+            return
+        self.focused_button_index = (self.focused_button_index + 1) % len(buttons)
+        self._update_button_focus()
+
+    def action_fire_focused_button(self) -> None:
+        """Fire the currently focused button (Stage/Discard/Unstage)."""
+        buttons = self.get_current_buttons()
+        if not buttons:
+            return  # Silently return - no buttons to press
+        if 0 <= self.focused_button_index < len(buttons):
+            buttons[self.focused_button_index].press()
 
     def populate_branch_dropdown(self) -> None:
         """Populate the branch dropdown with all available branches."""
@@ -433,160 +535,29 @@ class GitDiffViewer(App):
             # If we can't populate branches, that's okay - continue without it
             pass
 
-    def populate_file_tree(self) -> None:
-        """Populate the file tree sidebar with all files and their git status."""
-        if not self.git_sidebar.repo:
-            return
-            
-        try:
-            # Get the tree widget
-            tree = self.query_one("#file-tree", Tree)
-            
-            # Clear existing tree
-            tree.clear()
-            
-            # Automatically expand the root node
-            tree.root.expand()
-            
-            # Get all files in the repository with their statuses
-            file_data = self.git_sidebar.collect_file_data()
-            file_tree = self.git_sidebar.get_file_tree()
-            
-            # Sort file_tree so directories are processed first
-            file_tree.sort(key=lambda x: (x[1] != "directory", x[0]))
-            
-            # Keep track of created directory nodes to avoid duplicates
-            directory_nodes = {"": tree.root}  # Empty string maps to root node
-            
-            # Add all files and directories
-            for file_path, file_type, git_status in file_tree:
-                parts = file_path.split('/')
-                
-                for i in range(len(parts)):
-                    # For directories, we need to process all parts
-                    # For files, we need to process all parts except the last one (handled separately)
-                    if file_type == "directory" or i < len(parts) - 1:
-                        parent_path = "/".join(parts[:i])
-                        current_path = "/".join(parts[:i+1])
-                        
-                        # Create node if it doesn't exist
-                        if current_path not in directory_nodes:
-                            parent_node = directory_nodes[parent_path]
-                            new_node = parent_node.add(parts[i], expand=True)
-                            new_node.label.stylize("bold #bb9af7")  # Color directories with accent color
-                            directory_nodes[current_path] = new_node
-                
-                # For files, add as leaf node under the appropriate directory
-                if file_type == "file":
-                    # Get the parent directory node
-                    parent_dir_path = "/".join(parts[:-1])
-                    parent_node = directory_nodes[parent_dir_path] if parent_dir_path else tree.root
-                    
-                    leaf_node = parent_node.add_leaf(parts[-1], data={"path": file_path, "status": git_status})
-                    # Apply specific text colors based on git status
-                    if git_status == "staged":
-                        leaf_node.label.stylize("bold #9ece6a")
-                    elif git_status == "modified":
-                        leaf_node.label.stylize("bold #a9a1e1")
-                    elif git_status == "untracked":
-                        leaf_node.label.stylize("bold purple")
-                    else:  # unchanged
-                        leaf_node.label.stylize("default")
-                
-        except Exception as e:
-            # Show error in diff panel
-            try:
-                diff_content = self.query_one("#diff-content", VerticalScroll)
-                diff_content.remove_children()
-                diff_content.mount(Static(f"Error populating file tree: {e}", classes="error"))
-            except Exception:
-                # If we can't even show the error, that's okay - just continue without it
-                pass
-
     def action_show_branch_switcher(self) -> None:
         """Show the branch switcher modal."""
         modal = BranchSwitchModal(self.git_sidebar)
         self.push_screen(modal)
 
     def action_refresh_branches(self) -> None:
-        """Refresh all git status components including file trees and commit history."""
-        # Get fresh data from git
-        file_data = self.git_sidebar.collect_file_data()
-
-        # Refresh all components
-        self.populate_file_tree()
-        self.populate_unstaged_changes(file_data)
-        self.populate_staged_changes(file_data)
+        """Refresh all git status components and commit history."""
+        # Rebuild file list
+        self.build_file_list()
         self.populate_branch_dropdown()
         self.populate_commit_history()
         
-        # Also refresh the diff view if a file is currently selected
-        if self.current_file:
-            self.display_file_diff(
-                self.current_file, self.current_is_staged, force_refresh=True
-            )
+        # Refresh the view
+        if self.file_list:
+            self._navigate_to_current_file()
+        else:
+            self.update_status_bar()
+        
+        self.notify("Refreshed", severity="information")
 
     def action_quit(self) -> None:
         """Quit the application with a message."""
         self.exit("Thanks for using GitDiffViewer!")
-
-    def on_unstaged_tree_node_selected(self, event: Tree.NodeSelected) -> None:
-        """Handle unstaged tree node selection to display file diffs."""
-        node_data = event.node.data
-
-        if node_data and isinstance(node_data, dict) and "path" in node_data:
-            file_path = node_data["path"]
-            self.current_file = file_path
-            self.display_file_diff(file_path, is_staged=False)
-
-    def on_staged_tree_node_selected(self, event: Tree.NodeSelected) -> None:
-        """Handle staged tree node selection to display file diffs."""
-        node_data = event.node.data
-
-        if node_data and isinstance(node_data, dict) and "path" in node_data:
-            file_path = node_data["path"]
-            self.current_file = file_path
-            self.display_file_diff(file_path, is_staged=True)
-
-    def on_unstaged_tree_node_highlighted(self, event: Tree.NodeHighlighted) -> None:
-        """Handle unstaged tree node highlighting to display file diffs."""
-        node_data = event.node.data
-
-        if node_data and isinstance(node_data, dict) and "path" in node_data:
-            file_path = node_data["path"]
-            self.current_file = file_path
-            self.display_file_diff(file_path, is_staged=False)
-
-    def on_staged_tree_node_highlighted(self, event: Tree.NodeHighlighted) -> None:
-        """Handle staged tree node highlighting to display file diffs."""
-        node_data = event.node.data
-
-        if node_data and isinstance(node_data, dict) and "path" in node_data:
-            file_path = node_data["path"]
-            self.current_file = file_path
-            self.display_file_diff(file_path, is_staged=True)
-
-    def on_tree_node_selected(self, event: Tree.NodeSelected) -> None:
-        """Handle tree node selection to display file diffs."""
-        node_data = event.node.data
-
-        if node_data and isinstance(node_data, dict) and "path" in node_data:
-            file_path = node_data["path"]
-            status = node_data.get("status", "unchanged")
-            is_staged = status == "staged"
-            self.current_file = file_path
-            self.display_file_diff(file_path, is_staged)
-
-    def on_tree_node_highlighted(self, event: Tree.NodeHighlighted) -> None:
-        """Handle tree node highlighting to display file diffs."""
-        node_data = event.node.data
-
-        if node_data and isinstance(node_data, dict) and "path" in node_data:
-            file_path = node_data["path"]
-            status = node_data.get("status", "unchanged")
-            is_staged = status == "staged"
-            self.current_file = file_path
-            self.display_file_diff(file_path, is_staged)
 
     def _reverse_sanitize_path(self, sanitized_path: str) -> str:
         """Reverse the sanitization of a file path.
@@ -673,7 +644,12 @@ class GitDiffViewer(App):
                         )
                         # Refresh the UI
                         self.populate_branch_dropdown()
-                        self.populate_file_tree()
+                        self.build_file_list()
+                        self.current_file_index = 0
+                        if self.file_list:
+                            self._navigate_to_current_file()
+                        else:
+                            self.update_status_bar()
                         self.populate_commit_history()
                     else:
                         self.notify(
@@ -683,270 +659,29 @@ class GitDiffViewer(App):
                         # Reset to current branch
                         current_branch = self.git_sidebar.get_current_branch()
                         event.select.value = current_branch
-            
-    def action_refresh_branches(self) -> None:
-        """Refresh all git status components including file trees and commit history."""
-        # Get fresh data from git
-        file_data = self.git_sidebar.collect_file_data()
-        
-        # Refresh all components
-        self.populate_file_tree()
-        self.populate_unstaged_changes(file_data)
-        self.populate_staged_changes(file_data)
-        self.populate_branch_dropdown()
-        self.populate_commit_history()
-        
-        # Also refresh the diff view if a file is currently selected
-        if self.current_file:
-            self.display_file_diff(self.current_file, self.current_is_staged, force_refresh=True)
-        
-    def populate_file_tree(self) -> None:
-        """Populate the file tree sidebar with all files and their git status."""
-        if not self.git_sidebar.repo:
-            return
-
-        try:
-            # Get the tree widget
-            tree = self.query_one("#file-tree", Tree)
-
-            # Clear existing tree
-            tree.clear()
-
-            # Automatically expand the root node
-            tree.root.expand()
-
-            # Get all files in the repository with their statuses
-            file_tree = self.git_sidebar.get_file_tree()
-
-            # Sort file_tree so directories are processed first
-            file_tree.sort(key=lambda x: (x[1] != "directory", x[0]))
-
-            # Keep track of created directory nodes to avoid duplicates
-            directory_nodes = {"": tree.root}  # Empty string maps to root node
-
-            # Add all files and directories
-            for file_path, file_type, git_status in file_tree:
-                parts = file_path.split("/")
-
-                for i in range(len(parts)):
-                    # For directories, we need to process all parts
-                    # For files, we need to process all parts except the last one (handled separately)
-                    if file_type == "directory" or i < len(parts) - 1:
-                        parent_path = "/".join(parts[:i])
-                        current_path = "/".join(parts[: i + 1])
-
-                        # Create node if it doesn't exist
-                        if current_path not in directory_nodes:
-                            parent_node = directory_nodes[parent_path]
-                            new_node = parent_node.add(parts[i], expand=True)
-                            new_node.label.stylize(
-                                "bold #bb9af7"
-                            )  # Color directories with accent color
-                            directory_nodes[current_path] = new_node
-
-                # For files, add as leaf node under the appropriate directory
-                if file_type == "file":
-                    # Get the parent directory node
-                    parent_dir_path = "/".join(parts[:-1])
-                    parent_node = (
-                        directory_nodes[parent_dir_path]
-                        if parent_dir_path
-                        else tree.root
-                    )
-
-                    leaf_node = parent_node.add_leaf(
-                        parts[-1], data={"path": file_path, "status": git_status}
-                    )
-                    # Apply specific text colors based on git status
-                    if git_status == "staged":
-                        leaf_node.label.stylize("bold #9ece6a")
-                    elif git_status == "modified":
-                        leaf_node.label.stylize("bold #a9a1e1")
-                    elif git_status == "untracked":
-                        leaf_node.label.stylize("bold purple")
-                    else:  # unchanged
-                        leaf_node.label.stylize("default")
-
-        except Exception as e:
-            # Show error in diff panel
-            try:
-                diff_content = self.query_one("#diff-content", VerticalScroll)
-                diff_content.remove_children()
-                diff_content.mount(
-                    Static(f"Error populating file tree: {e}", classes="error")
-                )
-            except Exception:
-                # If we can't even show the error, that's okay - just continue without it
-                pass
-
-    def populate_unstaged_changes(self, file_data: Optional[Dict] = None) -> None:
-        """Populate the unstaged changes tree in the right sidebar."""
-        if not self.git_sidebar.repo:
-            return
-
-        file_data = file_data or self.git_sidebar.collect_file_data()
-        try:
-            # Get the unstaged tree widget
-            tree = self.query_one("#unstaged-tree", Tree)
-
-            # Clear existing tree
-            tree.clear()
-
-            # Automatically expand the root node
-            tree.root.expand()
-
-            # Use pre-fetched unstaged files
-            unstaged_files = file_data["unstaged_files"]
-            untracked_files = set(file_data["untracked_files"])
-
-            # Sort unstaged_files so directories are processed first
-            unstaged_files.sort()
-
-            # Keep track of created directory nodes to avoid duplicates
-            directory_nodes = {"": tree.root}  # Empty string maps to root node
-
-            # Add unstaged files to tree with directory structure
-            for file_path in unstaged_files:
-                parts = file_path.split("/")
-                file_name = parts[-1]
-
-                # Determine file status from pre-fetched data
-                status = "untracked" if file_path in untracked_files else "modified"
-
-                # Build intermediate directory nodes as needed
-                for i in range(len(parts) - 1):
-                    parent_path = "/".join(parts[:i])
-                    current_path = "/".join(parts[: i + 1])
-
-                    # Create node if it doesn't exist
-                    if current_path not in directory_nodes:
-                        parent_node = directory_nodes[parent_path]
-                        new_node = parent_node.add(parts[i], expand=True)
-                        new_node.label.stylize(
-                            "bold #bb9af7"
-                        )  # Color directories with accent color
-                        directory_nodes[current_path] = new_node
-
-                # Add file as leaf node under the appropriate directory
-                parent_dir_path = "/".join(parts[:-1])
-                parent_node = (
-                    directory_nodes[parent_dir_path] if parent_dir_path else tree.root
-                )
-
-                leaf_node = parent_node.add_leaf(
-                    file_name, data={"path": file_path, "status": status}
-                )
-
-                # Apply styling based on status
-                if status == "modified":
-                    leaf_node.label.stylize("bold #a9a1e1")
-                else:  # untracked
-                    leaf_node.label.stylize("bold purple")
-
-        except Exception as e:
-            # Show error in diff panel
-            try:
-                diff_content = self.query_one("#diff-content", VerticalScroll)
-                diff_content.remove_children()
-                diff_content.mount(
-                    Static(f"Error populating unstaged changes: {e}", classes="error")
-                )
-            except Exception:
-                pass
-
-    def populate_staged_changes(self, file_data: Optional[Dict] = None) -> None:
-        """Populate the staged changes tree in the right sidebar."""
-        if not self.git_sidebar.repo:
-            return
-
-        file_data = file_data or self.git_sidebar.collect_file_data()
-        try:
-            # Get the staged tree widget
-            tree = self.query_one("#staged-tree", Tree)
-
-            # Clear existing tree
-            tree.clear()
-
-            # Automatically expand the root node
-            tree.root.expand()
-
-            # Use pre-fetched staged files
-            staged_files = file_data["staged_files"]
-
-            # Sort staged_files so directories are processed first
-            staged_files.sort()
-
-            # Keep track of created directory nodes to avoid duplicates
-            directory_nodes = {"": tree.root}  # Empty string maps to root node
-
-            # Add staged files with directory structure
-            for file_path in staged_files:
-                parts = file_path.split("/")
-                file_name = parts[-1]
-
-                # Build intermediate directory nodes as needed
-                for i in range(len(parts) - 1):
-                    parent_path = "/".join(parts[:i])
-                    current_path = "/".join(parts[: i + 1])
-
-                    # Create node if it doesn't exist
-                    if current_path not in directory_nodes:
-                        parent_node = directory_nodes[parent_path]
-                        new_node = parent_node.add(parts[i], expand=True)
-                        new_node.label.stylize(
-                            "bold #bb9af7"
-                        )  # Color directories with accent color
-                        directory_nodes[current_path] = new_node
-
-                # Add file as leaf node under the appropriate directory
-                parent_dir_path = "/".join(parts[:-1])
-                parent_node = (
-                    directory_nodes[parent_dir_path] if parent_dir_path else tree.root
-                )
-
-                leaf_node = parent_node.add_leaf(
-                    file_name, data={"path": file_path, "status": "staged"}
-                )
-                leaf_node.label.stylize("bold #9ece6a")
-
-        except Exception as e:
-            # Show error in diff panel
-            try:
-                diff_content = self.query_one("#diff-content", VerticalScroll)
-                diff_content.remove_children()
-                diff_content.mount(
-                    Static(f"Error populating staged changes: {e}", classes="error")
-                )
-            except Exception:
-                pass
 
     def stage_hunk(self, file_path: str, hunk_index: int) -> None:
         """Stage a specific hunk of a file."""
         try:
             success = self.git_sidebar.stage_hunk(file_path, hunk_index)
 
+            # Clear any cached diff state regardless of success
+            self._current_displayed_file = None
+            self._current_displayed_is_staged = None
+
+            # Invalidate git cache to get fresh state
+            self.git_sidebar._invalidate_cache()
+
             if success:
-                # Clear any cached diff state
-                if hasattr(self, "_current_displayed_file"):
-                    delattr(self, "_current_displayed_file")
-                if hasattr(self, "_current_displayed_is_staged"):
-                    delattr(self, "_current_displayed_is_staged")
-
-                # Refresh tree states with latest git data
-                file_data = self.git_sidebar.collect_file_data()
-                self.populate_unstaged_changes(file_data)
-                self.populate_staged_changes(file_data)
-
-                # Refresh only the diff view for the current file
-                if self.current_file:
-                    self.display_file_diff(
-                        self.current_file, self.current_is_staged, force_refresh=True
-                    )
-
-                # Schedule a background refresh of file trees (non-blocking)
-                self.call_later(self._refresh_trees_async)
+                self.notify(f"Staged hunk in {file_path}", severity="information")
             else:
-                self.notify(f"Failed to stage {file_path}", severity="error")
+                # Staging failed - might be already staged or hunk changed
+                self.notify("Could not stage hunk (may already be staged)", severity="warning")
+
+            # Regardless of success/failure, rebuild file list and check if we should advance
+            old_file = self.current_file
+            self.build_file_list()
+            self._stay_on_file_or_advance(old_file)
 
         except Exception as e:
             self.notify(f"Error staging hunk: {e}", severity="error")
@@ -971,22 +706,22 @@ class GitDiffViewer(App):
         try:
             success = self.git_sidebar.unstage_hunk(file_path, hunk_index)
 
+            # Clear any cached diff state regardless of success
+            self._current_displayed_file = None
+            self._current_displayed_is_staged = None
+
+            # Invalidate git cache to get fresh state
+            self.git_sidebar._invalidate_cache()
+
             if success:
-                # Refresh tree states with latest git data
-                file_data = self.git_sidebar.collect_file_data()
-                self.populate_unstaged_changes(file_data)
-                self.populate_staged_changes(file_data)
-
-                # Refresh only the diff view for the current file
-                if self.current_file:
-                    self.display_file_diff(
-                        self.current_file, self.current_is_staged, force_refresh=True
-                    )
-
-                # Schedule a background refresh of file trees (non-blocking)
-                self.call_later(self._refresh_trees_async)
+                self.notify(f"Unstaged hunk in {file_path}", severity="information")
             else:
-                self.notify(f"Failed to unstage {file_path}", severity="error")
+                self.notify("Could not unstage hunk (may already be unstaged)", severity="warning")
+
+            # Regardless of success/failure, rebuild file list and check if we should advance
+            old_file = self.current_file
+            self.build_file_list()
+            self._stay_on_file_or_advance(old_file)
 
         except Exception as e:
             self.notify(f"Error unstaging hunk: {e}", severity="error")
@@ -996,50 +731,84 @@ class GitDiffViewer(App):
         try:
             success = self.git_sidebar.discard_hunk(file_path, hunk_index)
 
+            # Clear any cached diff state regardless of success
+            self._current_displayed_file = None
+            self._current_displayed_is_staged = None
+
+            # Invalidate git cache to get fresh state
+            self.git_sidebar._invalidate_cache()
+
             if success:
-                # Clear any cached diff state
-                if hasattr(self, "_current_displayed_file"):
-                    delattr(self, "_current_displayed_file")
-                if hasattr(self, "_current_displayed_is_staged"):
-                    delattr(self, "_current_displayed_is_staged")
-
-                # Refresh tree states with latest git data
-                file_data = self.git_sidebar.collect_file_data()
-                self.populate_unstaged_changes(file_data)
-                self.populate_staged_changes(file_data)
-
-                # Refresh only the diff view
-                if self.current_file:
-                    self.display_file_diff(
-                        self.current_file, self.current_is_staged, force_refresh=True
-                    )
-
-                # Schedule a background refresh of file trees (non-blocking)
-                self.call_later(self._refresh_trees_async)
+                self.notify(f"Discarded hunk in {file_path}", severity="information")
             else:
-                self.notify(
-                    f"Failed to discard changes in {file_path}", severity="error"
-                )
+                self.notify("Could not discard hunk (may already be gone)", severity="warning")
+
+            # Regardless of success/failure, rebuild file list and check if we should advance
+            old_file = self.current_file
+            self.build_file_list()
+            self._stay_on_file_or_advance(old_file)
 
         except Exception as e:
             self.notify(f"Error discarding hunk: {e}", severity="error")
 
-    def _refresh_trees_async(self) -> None:
-        """Background refresh of file trees to avoid blocking UI during hunk operations."""
-        try:
-            # Check if we have recently modified files to optimize the refresh
-            if self.git_sidebar.has_recent_modifications():
-                # For now, still do full refresh but in background
-                # Future optimization: only update nodes for modified files
-                self.populate_file_tree()
-                self.populate_unstaged_changes()
-                self.populate_staged_changes()
-            else:
-                # No recent changes, skip expensive operations
+    def _stay_on_file_or_advance(self, old_file: str) -> None:
+        """Try to stay on the same file after a hunk operation, or advance to next."""
+        if not self.file_list:
+            # No files left in current view
+            self.current_file = None
+            self.current_file_index = 0
+            self.update_status_bar()
+            
+            # If we were viewing unstaged files and there are none left,
+            # but there ARE staged files, auto-switch to staged view
+            if not self.viewing_staged:
+                self.git_sidebar._invalidate_cache()
+                staged_files = self.git_sidebar.get_staged_files()
+                
+                if staged_files:
+                    self.notify(
+                        f"All changes staged! Press 'c' to commit ({len(staged_files)} files)",
+                        severity="information",
+                    )
+                    # Auto-switch to staged view
+                    self.viewing_staged = True
+                    self.build_file_list()
+                    self.current_file_index = 0
+                    if self.file_list:
+                        self._navigate_to_current_file()
+                    else:
+                        self.update_status_bar()
+                    return
+            
+            # Show "no changes" message
+            try:
+                diff_content = self.query_one("#diff-content", VerticalScroll)
+                diff_content.remove_children()
+                view_type = "staged" if self.viewing_staged else "unstaged"
+                diff_content.mount(
+                    Static(f"No {view_type} changes to display", classes="info")
+                )
+            except Exception:
                 pass
-        except Exception:
-            # Silently fail background operations to avoid disrupting user experience
-            pass
+            return
+        
+        # Try to find the same file in the list
+        for i, (file_path, _) in enumerate(self.file_list):
+            if file_path == old_file:
+                # File still exists - check if it still has hunks
+                hunks = self.git_sidebar.get_diff_hunks(file_path, staged=self.viewing_staged)
+                if hunks:
+                    self.current_file_index = i
+                    self._navigate_to_current_file()
+                    return
+                # File has no more hunks in current view, fall through to advance
+                break
+        
+        # File no longer in list or has no hunks, advance to next file
+        if self.file_list:
+            # Move to next file (wrap around if needed)
+            self.current_file_index = min(self.current_file_index, len(self.file_list) - 1)
+            self._navigate_to_current_file()
 
     def populate_commit_history(self) -> None:
         """Populate the commit history tab."""
@@ -1195,18 +964,22 @@ class GitDiffViewer(App):
                 commit_input.value = ""
                 commit_body.text = ""
 
-                # Rebuild tree states with latest git data
-                file_data = self.git_sidebar.collect_file_data()
-                self.populate_file_tree()
-                self.populate_unstaged_changes(file_data)
-                self.populate_staged_changes(file_data)
-
-                # Refresh the diff and commit history views
-                if self.current_file:
-                    self.display_file_diff(
-                        self.current_file, self.current_is_staged, force_refresh=True
-                    )
+                # Rebuild file list and refresh view
+                self.build_file_list()
                 self.populate_commit_history()
+                
+                if self.file_list:
+                    self._navigate_to_current_file()
+                else:
+                    self.update_status_bar()
+                    try:
+                        diff_content = self.query_one("#diff-content", VerticalScroll)
+                        diff_content.remove_children()
+                        diff_content.mount(
+                            Static("Commit successful! No more changes to display.", classes="info")
+                        )
+                    except Exception:
+                        pass
             else:
                 self.notify("Failed to commit changes", severity="error")
 
@@ -1230,16 +1003,13 @@ class GitDiffViewer(App):
             success, message = self.git_sidebar.pull_current_branch()
             if success:
                 self.notify(f"📥 {message}", severity="information")
-                # Refresh trees and history to reflect new changes
-                file_data = self.git_sidebar.collect_file_data()
-                self.populate_file_tree()
-                self.populate_unstaged_changes(file_data)
-                self.populate_staged_changes(file_data)
+                # Rebuild file list and refresh
+                self.build_file_list()
                 self.populate_commit_history()
-                if self.current_file:
-                    self.display_file_diff(
-                        self.current_file, self.current_is_staged, force_refresh=True
-                    )
+                if self.file_list:
+                    self._navigate_to_current_file()
+                else:
+                    self.update_status_bar()
             else:
                 self.notify(message, severity="error")
         except Exception as e:
@@ -1255,7 +1025,7 @@ class GitDiffViewer(App):
         self.push_screen(GACConfigModal(), handle_config_result)
 
     def action_stage_selected_file(self) -> None:
-        """Stage the entire currently selected file from any file tree if it is unstaged/untracked."""
+        """Stage the entire currently selected file."""
         try:
             if not self.current_file:
                 self.notify("No file selected", severity="warning")
@@ -1269,22 +1039,20 @@ class GitDiffViewer(App):
             # Perform the staging operation
             success = self.git_sidebar.stage_file(self.current_file)
             if success:
-                # Use the comprehensive refresh function
-                self.action_refresh_branches()
-                # Also refresh diff view for the staged file
-                self.display_file_diff(
-                    self.current_file, is_staged=True, force_refresh=True
-                )
+                old_file = self.current_file
+                self.build_file_list()
+                self._stay_on_file_or_advance(old_file)
+                self.notify(f"Staged {old_file}", severity="information")
             else:
                 self.notify(
-                    f"Failed to stage all changes in {self.current_file}",
+                    f"Failed to stage {self.current_file}",
                     severity="error",
                 )
         except Exception as e:
             self.notify(f"Error staging selected file: {e}", severity="error")
 
     def action_unstage_selected_file(self) -> None:
-        """Unstage all changes for the selected file (if staged)."""
+        """Unstage all changes for the selected file."""
         try:
             if not self.current_file:
                 self.notify("No file selected", severity="warning")
@@ -1304,13 +1072,10 @@ class GitDiffViewer(App):
                 success = self.git_sidebar.unstage_file(self.current_file)
 
             if success:
-                # Use the comprehensive refresh function
-                self.action_refresh_branches()
-                # Also refresh diff view to show unstaged changes
-                if self.current_file:
-                    self.display_file_diff(
-                        self.current_file, is_staged=False, force_refresh=True
-                    )
+                old_file = self.current_file
+                self.build_file_list()
+                self._stay_on_file_or_advance(old_file)
+                self.notify(f"Unstaged {old_file}", severity="information")
             else:
                 self.notify(f"Failed to unstage {self.current_file}", severity="error")
         except Exception as e:
@@ -1329,12 +1094,22 @@ class GitDiffViewer(App):
         try:
             success, message = self.git_sidebar.stage_all_changes()
             if success:
-                # Refresh UI
-                self.populate_file_tree()
-                if self.current_file:
-                    self.display_file_diff(
-                        self.current_file, is_staged=True, force_refresh=True
-                    )
+                # Rebuild file list and refresh
+                self.build_file_list()
+                if self.file_list:
+                    self.current_file_index = 0
+                    self._navigate_to_current_file()
+                else:
+                    self.update_status_bar()
+                    try:
+                        diff_content = self.query_one("#diff-content", VerticalScroll)
+                        diff_content.remove_children()
+                        diff_content.mount(
+                            Static("All changes staged! Switch to staged view (2) to see them.", classes="info")
+                        )
+                    except Exception:
+                        pass
+                self.notify("All changes staged", severity="information")
             else:
                 self.notify(message, severity="error")
         except Exception as e:
@@ -1345,33 +1120,75 @@ class GitDiffViewer(App):
         try:
             success, message = self.git_sidebar.unstage_all_changes()
             if success:
-                # Refresh UI
-                self.populate_file_tree()
-                if self.current_file:
-                    self.display_file_diff(
-                        self.current_file, is_staged=False, force_refresh=True
-                    )
+                # Rebuild file list and refresh
+                self.build_file_list()
+                if self.file_list:
+                    self.current_file_index = 0
+                    self._navigate_to_current_file()
+                else:
+                    self.update_status_bar()
+                    try:
+                        diff_content = self.query_one("#diff-content", VerticalScroll)
+                        diff_content.remove_children()
+                        diff_content.mount(
+                            Static("All changes unstaged! Switch to unstaged view (1) to see them.", classes="info")
+                        )
+                    except Exception:
+                        pass
+                self.notify("All changes unstaged", severity="information")
             else:
                 self.notify(message, severity="error")
         except Exception as e:
             self.notify(f"Error unstaging all changes: {e}", severity="error")
 
     def action_switch_to_unstaged(self) -> None:
-        """Switch to the Unstaged Changes tab."""
-        try:
-            status_tabs = self.query_one("#status-tabs", TabbedContent)
-            status_tabs.active = "unstaged-tab"
-        except Exception as e:
-            self.notify(f"Error switching to unstaged tab: {e}", severity="error")
+        """Switch to viewing unstaged files."""
+        self.viewing_staged = False
+        self.build_file_list()
+        self.current_file_index = 0
+        if self.file_list:
+            self._navigate_to_current_file()
+        else:
+            self.update_status_bar()
+            # Clear diff panel and show message
+            try:
+                diff_content = self.query_one("#diff-content", VerticalScroll)
+                diff_content.remove_children()
+                diff_content.mount(
+                    Static("No unstaged changes to display", classes="info")
+                )
+            except Exception:
+                pass
+        self.notify("Viewing unstaged files", severity="information")
 
     def action_switch_to_staged(self) -> None:
-        """Switch to the Staged Changes tab."""
+        """Switch to viewing staged files."""
+        self.viewing_staged = True
+        self.build_file_list()
+        self.current_file_index = 0
+        if self.file_list:
+            self._navigate_to_current_file()
+        else:
+            self.update_status_bar()
+            # Clear diff panel and show message
+            try:
+                diff_content = self.query_one("#diff-content", VerticalScroll)
+                diff_content.remove_children()
+                diff_content.mount(
+                    Static("No staged changes to display", classes="info")
+                )
+            except Exception:
+                pass
+        self.notify("Viewing staged files", severity="information")
+
+    def action_show_commit_tab(self) -> None:
+        """Switch to the Commit Message tab."""
         try:
-            status_tabs = self.query_one("#status-tabs", TabbedContent)
-            status_tabs.active = "staged-tab"
+            tabbed_content = self.query_one("#main-tabs", TabbedContent)
+            tabbed_content.active = "commit-tab"
         except Exception as e:
-            self.notify(f"Error switching to staged tab: {e}", severity="error")
-    
+            self.notify(f"Could not switch to commit tab: {e}", severity="error")
+
     def ensure_commit_graph_mounted(self) -> None:
         """Ensure the CommitGraphWidget is mounted into the graph container once.
 
