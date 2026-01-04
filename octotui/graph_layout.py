@@ -11,6 +11,7 @@ import git
 from octotui.graph_data import (
     CommitGraph, CommitNode, GraphEdge, GitRef, RefType, CommitType
 )
+from octotui.profiler import profile
 
 
 class GraphLayoutEngine:
@@ -25,6 +26,7 @@ class GraphLayoutEngine:
         self.repo = repo
         self.graph = CommitGraph()
         
+    @profile
     def build_graph(self, max_commits: int = 100) -> CommitGraph:
         """Build the complete commit graph with layout.
         
@@ -48,6 +50,7 @@ class GraphLayoutEngine:
         
         return self.graph
     
+    @profile
     def _load_commits(self, max_commits: int) -> None:
         """Load commits from repository.
 
@@ -99,6 +102,7 @@ class GraphLayoutEngine:
             # Caller will render a friendly message instead of crashing.
             self.graph = self.graph or CommitGraph()
     
+    @profile
     def _load_refs(self) -> None:
         """Load branches and tags from repository."""
         try:

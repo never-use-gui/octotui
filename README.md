@@ -91,6 +91,28 @@ uv run octotui
 
 ---
 
+## Profiling & Debugging
+
+If OctoTUI is slow on large repositories, enable profiling to identify bottlenecks:
+
+```bash
+# Enable profiling (logs to ~/.octotui_profile.log)
+OCTOTUI_PROFILE=1 uv run octotui /path/to/big/repo
+
+# Use a custom log file
+OCTOTUI_PROFILE=1 OCTOTUI_PROFILE_LOG=/tmp/profile.log uv run octotui
+```
+
+After using the app, check the profile log for a summary of slow functions:
+
+```bash
+cat ~/.octotui_profile.log | tail -30
+```
+
+The summary shows function call counts, total time, average time, and min/max times—sorted by total time (slowest first).
+
+---
+
 ## Tech Stack
 
 - [Textual](https://textual.textualize.io/) - TUI framework

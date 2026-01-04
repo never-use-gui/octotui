@@ -28,6 +28,7 @@ from textual.widgets.option_list import Option
 import time
 import subprocess
 import os
+from octotui.profiler import profile, profile_block
 
 
 class CommitLine(Static):
@@ -588,6 +589,7 @@ class GitDiffViewer(App):
         except Exception:
             pass
 
+    @profile
     def build_file_list(self) -> None:
         """Build the list of files to navigate through based on current view mode."""
         self.file_list = []
@@ -610,6 +612,7 @@ class GitDiffViewer(App):
         except Exception:
             self.file_list = []
 
+    @profile
     def update_status_bar(self) -> None:
         """Update the status bar with current navigation state."""
         try:
@@ -1127,6 +1130,7 @@ class GitDiffViewer(App):
             self.current_file_index = min(self.current_file_index, len(self.file_list) - 1)
             self._navigate_to_current_file()
 
+    @profile
     def populate_commit_history(self) -> None:
         """Populate the commit history tab."""
         try:
@@ -1134,19 +1138,26 @@ class GitDiffViewer(App):
             history_content.remove_children()
 
             branch_name = self.git_sidebar.get_current_branch()
-            commits = self.git_sidebar.get_commit_history()
+            # Limit to 200 commits for performance
+            commits = self.git_sidebar.get_commit_history(max_count=200)
 
+            # Build all widgets first, then mount in one batch for performance
+            commit_widgets = []
             for commit in commits:
                 # Display branch, commit ID, author, and message with colors that match our theme
                 commit_text = f"[#87CEEB]{branch_name}[/#87CEEB] [#E0FFFF]{commit.sha}[/#E0FFFF] [#00BFFF]{commit.author}[/#00BFFF]: {commit.message}"
-                commit_line = CommitLine(commit_text, classes="info")
-                history_content.mount(commit_line)
+                commit_widgets.append(CommitLine(commit_text, classes="info"))
+            
+            # Batch mount all widgets at once (much faster than individual mounts)
+            if commit_widgets:
+                history_content.mount_all(commit_widgets)
 
         except Exception:
             pass
             
 
             
+    @profile
     def display_file_diff(self, file_path: str, is_staged: bool = False, force_refresh: bool = False) -> None:
         """Display the diff for a selected file in the appropriate diff panel."""
         # Skip if this is the same file we're already displaying (unless force_refresh is True)
@@ -1609,6 +1620,7 @@ class GitDiffViewer(App):
         except Exception as e:
             self.notify(f"Error: {e}", severity="error")
 
+    @profile
     def _populate_unstaged_tab(self) -> None:
         """Populate the unstaged diff tab with current file or message."""
         try:
@@ -1622,6 +1634,7 @@ class GitDiffViewer(App):
         except Exception:
             pass
 
+    @profile
     def _populate_staged_tab(self) -> None:
         """Populate the staged diff tab with current file or message."""
         try:
@@ -1635,6 +1648,7 @@ class GitDiffViewer(App):
         except Exception:
             pass
 
+    @profile
     def _populate_status_tab(self) -> None:
         """Populate the status tab with repository information."""
         try:
@@ -1893,6 +1907,7 @@ class GitDiffViewer(App):
         except Exception as e:
             self.notify(f"Could not open editor: {e}", severity="error")
 
+    @profile
     def populate_file_tree(self) -> None:
         """Populate the file tree with all repository files."""
         try:

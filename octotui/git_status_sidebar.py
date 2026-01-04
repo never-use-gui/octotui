@@ -9,7 +9,7 @@ from datetime import datetime
 import time
 from collections import defaultdict
 
-# Import for backward compatibility with existing code
+from octotui.profiler import profile, profile_block
 
 
 @dataclass
@@ -120,6 +120,7 @@ class GitStatusSidebar:
         """Check if there are any recent modifications."""
         return len(self._recently_modified_files) > 0
 
+    @profile
     def get_file_statuses(self) -> Dict[str, FrozenSet[str]]:
         """Get git status flags for files in the repository.
 
@@ -160,6 +161,7 @@ class GitStatusSidebar:
         self._set_cache(cache_key, frozen_statuses)
         return frozen_statuses
 
+    @profile
     def get_staged_files(self) -> List[str]:
         """Get list of staged files in the repository.
 
@@ -182,6 +184,7 @@ class GitStatusSidebar:
         except Exception:
             return []
 
+    @profile
     def get_unstaged_files(self) -> List[str]:
         """Get a list of unstaged (modified) files.
 
@@ -205,6 +208,7 @@ class GitStatusSidebar:
                 return candidate
         return "unchanged"
 
+    @profile
     def collect_file_data(self) -> Dict[str, any]:
         """Collect consolidated file and directory data for minimal git calls.
 
@@ -281,6 +285,7 @@ class GitStatusSidebar:
                 "untracked_files": [],
             }
 
+    @profile
     def get_file_tree(self) -> List[Tuple[str, str, str]]:
         """Get a flattened list of all files with their git status.
 
@@ -299,6 +304,7 @@ class GitStatusSidebar:
             file_entries + dir_entries, key=lambda x: (x[1] != "directory", x[0])
         )
 
+    @profile
     def get_diff_hunks(self, file_path: str, staged: bool = False) -> List[Hunk]:
         """Get diff hunks for a specific file.
 
@@ -451,6 +457,7 @@ class GitStatusSidebar:
 
         return filtered_hunks
 
+    @profile
     def _parse_diff_into_hunks(self, diff: str) -> List[Hunk]:
         """Parse a unified diff string into hunks.
 
@@ -491,6 +498,7 @@ class GitStatusSidebar:
 
         return hunks
 
+    @profile
     def get_file_status(self, file_path: str) -> str:
         """Get the git status of a specific file.
 
@@ -581,8 +589,12 @@ class GitStatusSidebar:
         except Exception:
             return False
 
-    def get_commit_history(self) -> List[CommitInfo]:
+    @profile
+    def get_commit_history(self, max_count: int = 200) -> List[CommitInfo]:
         """Get commit history.
+
+        Args:
+            max_count: Maximum number of commits to return (default 200)
 
         Returns:
             List of CommitInfo objects
@@ -591,7 +603,8 @@ class GitStatusSidebar:
             return []
 
         try:
-            commits = list(self.repo.iter_commits("HEAD"))
+            # IMPORTANT: Limit commits to avoid loading entire history!
+            commits = list(self.repo.iter_commits("HEAD", max_count=max_count))
             commit_info_list = []
 
             for commit in commits:
