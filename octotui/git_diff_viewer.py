@@ -99,6 +99,19 @@ class GitDiffHistoryTabs(Widget):
                         classes="button-row",
                     ),
                     Static(""),
+                    Static("📦 Working Tree", classes="settings-title"),
+                    Static(""),
+                    Horizontal(
+                        Button("✅ Stage All", id="stage-all-button", classes="action-button"),
+                        Button("❌ Unstage All", id="unstage-all-button", classes="action-button"),
+                        classes="button-row",
+                    ),
+                    Horizontal(
+                        Button("📥 Stash", id="stash-button", classes="action-button"),
+                        Button("📤 Pop Stash", id="pop-stash-button", classes="action-button"),
+                        classes="button-row",
+                    ),
+                    Static(""),
                     Static("🔄 Remote Operations", classes="settings-title"),
                     Static(""),
                     Horizontal(
@@ -488,6 +501,7 @@ class GitDiffViewer(App):
         self.dark = True
         self.git_sidebar = GitStatusSidebar(repo_path)
         self.gac_integration = GACIntegration(self.git_sidebar)
+        self._updating_branch_select = False  # Flag to suppress branch switch during refresh
         self.current_file: str | None = None
         self.current_commit: str | None = None
         self.current_is_staged: bool | None = None
@@ -700,6 +714,9 @@ class GitDiffViewer(App):
     def populate_branch_dropdown(self) -> None:
         """Populate the branch dropdown with all available branches."""
         try:
+            # Set flag to prevent branch switch handler from firing
+            self._updating_branch_select = True
+            
             # Get the select widget
             branch_select = self.query_one("#branch-select", Select)
 
@@ -717,6 +734,8 @@ class GitDiffViewer(App):
         except Exception:
             # If we can't populate branches, that's okay - continue without it
             pass
+        finally:
+            self._updating_branch_select = False
 
     def action_show_branch_switcher(self) -> None:
         """Show the branch switcher modal."""
@@ -836,6 +855,18 @@ class GitDiffViewer(App):
         elif button_id == "create-branch-button":
             self._create_new_branch()
 
+        elif button_id == "stage-all-button":
+            self.action_stage_all()
+
+        elif button_id == "unstage-all-button":
+            self.action_unstage_all()
+
+        elif button_id == "stash-button":
+            self.action_stash()
+
+        elif button_id == "pop-stash-button":
+            self.action_pop_stash()
+
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:
         """Handle tab activation to populate content."""
         # Use pane.id which is what we set in TabPane(id=...)
@@ -882,6 +913,10 @@ class GitDiffViewer(App):
             except Exception:
                 pass
         elif event.select.id == "branch-select":
+            # Skip if we're programmatically updating the dropdown
+            if self._updating_branch_select:
+                return
+                
             branch_name = event.value
             current_branch = self.git_sidebar.get_current_branch()
             
@@ -1491,6 +1526,59 @@ class GitDiffViewer(App):
         except Exception as e:
             self.notify(f"Error unstaging all changes: {e}", severity="error")
 
+    def action_stash(self) -> None:
+        """Stash all uncommitted changes."""
+        try:
+            if not self.git_sidebar.repo:
+                self.notify("No repository loaded", severity="error")
+                return
+            
+            # Check if there are changes to stash
+            if not self.git_sidebar.is_dirty():
+                self.notify("No changes to stash", severity="warning")
+                return
+            
+            # Stash changes
+            self.git_sidebar.repo.git.stash('push', '-m', 'Stashed by OctoTUI')
+            
+            # Refresh UI
+            self.git_sidebar._invalidate_cache()
+            self.build_file_list()
+            self.populate_file_tree()
+            self._populate_status_tab()
+            self.update_status_bar()
+            
+            self.notify("📥 Changes stashed", severity="information")
+        except Exception as e:
+            self.notify(f"Stash failed: {e}", severity="error")
+
+    def action_pop_stash(self) -> None:
+        """Pop the most recent stash."""
+        try:
+            if not self.git_sidebar.repo:
+                self.notify("No repository loaded", severity="error")
+                return
+            
+            # Check if there are stashes
+            stash_list = self.git_sidebar.repo.git.stash('list')
+            if not stash_list:
+                self.notify("No stashes to pop", severity="warning")
+                return
+            
+            # Pop the stash
+            self.git_sidebar.repo.git.stash('pop')
+            
+            # Refresh UI
+            self.git_sidebar._invalidate_cache()
+            self.build_file_list()
+            self.populate_file_tree()
+            self._populate_status_tab()
+            self.update_status_bar()
+            
+            self.notify("📤 Stash popped", severity="information")
+        except Exception as e:
+            self.notify(f"Pop stash failed: {e}", severity="error")
+
     def action_switch_to_unstaged(self) -> None:
         """Switch to the Unstaged tab."""
         try:
@@ -1601,15 +1689,19 @@ class GitDiffViewer(App):
                     parts.append(f"[#f7768e]{unstaged} unstaged[/]")
                 status_label.update(", ".join(parts))
             
-            # Update branch selector
-            branch_select = self.query_one("#branch-select", Select)
-            branches = self.git_sidebar.get_branches()
-            if branches:
-                branch_options = [(b, b) for b in branches]
-                branch_select.set_options(branch_options)
-                branch_select.value = current_branch
-            else:
-                branch_select.set_options([("No branches", "none")])
+            # Update branch selector (with flag to prevent switch handler)
+            try:
+                self._updating_branch_select = True
+                branch_select = self.query_one("#branch-select", Select)
+                branches = self.git_sidebar.get_branches()
+                if branches:
+                    branch_options = [(b, b) for b in branches]
+                    branch_select.set_options(branch_options)
+                    branch_select.value = current_branch
+                else:
+                    branch_select.set_options([("No branches", "none")])
+            finally:
+                self._updating_branch_select = False
                 
         except Exception as e:
             pass  # Silently handle errors

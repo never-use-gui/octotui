@@ -20,7 +20,9 @@
 ---
 
 ## 🚀 OctoTUI
-![octotui.png](octotui.png)
+
+![OctoTUI Demo](octotui.gif)
+
 > **We love GitKraken so much, we wanted to bring that beautiful experience to the terminal!**
 
 GitKraken is amazing - it's gorgeous, intuitive, and makes Git feel approachable. But as terminal enthusiasts, we found ourselves constantly context-switching between our editor and GitKraken. We wanted that same delightful experience without ever leaving the command line.
@@ -37,6 +39,43 @@ GitKraken is amazing - it's gorgeous, intuitive, and makes Git feel approachable
 - 🤖 AI-powered commit messages (via GAC)
 - 🆓 100% free and open source
 - 🏠 Never leave your terminal flow
+
+---
+
+## 📸 Screenshots
+
+### Status Tab
+See your repository status at a glance: current branch, remote tracking, sync status (ahead/behind), and working tree changes. Manage branches and remote operations all in one place.
+
+![Status Tab](screenshots/octotui_status.png)
+
+### Files Tab
+Browse your entire repository with a familiar tree view. Press `e` to open any file in your configured editor.
+
+![Files Tab](screenshots/octotui_files.png)
+
+### Unstaged Changes
+Review your unstaged changes with beautiful syntax-highlighted diffs. Stage or discard individual hunks with a single click.
+
+![Unstaged Tab](screenshots/octotui_unstaged.png)
+
+### Staged Changes
+See exactly what's going into your next commit. Unstage hunks if you change your mind.
+
+![Staged Tab](screenshots/octotui_staged.png)
+
+### Commit Tab
+Write your commit message with a subject and body. Or let AI generate it for you with the **Generate with GAC** button!
+
+![Commit Tab](screenshots/octotui_commit.png)
+
+### Settings Tab
+Configure your editor, theme, and AI provider for commit message generation. Supports 30+ AI providers including OpenAI, Anthropic, Ollama, and more.
+
+![Settings Tab](screenshots/octotui_settings1.png)
+![Settings Tab - GAC Config](screenshots/octotui_settings2.png)
+
+---
 
 ## 📦 Installation
 
@@ -95,10 +134,22 @@ uv pip install 'gac>=0.18.0'
 | Key | Action |
 |-----|--------|
 | `↑/↓` | Navigate files/hunks |
+| `←/→` | Navigate between files |
 | `Enter` | Select file |
-| `Tab` / `Shift+Tab` | Cycle through UI elements |
-| `1` / `Ctrl+1` | Switch to Unstaged tab |
-| `2` / `Ctrl+2` | Switch to Staged tab |
+| `Tab` | Cycle through buttons |
+| `e` | Edit file in external editor |
+
+### 📑 View Switching (1-8)
+| Key | Tab |
+|-----|-----|
+| `1` | Status |
+| `2` | Files |
+| `3` | Unstaged |
+| `4` | Staged |
+| `5` | Commit |
+| `6` | Graph |
+| `7` | History |
+| `8` | Settings |
 
 ### 🔄 Git Operations
 | Key | Action |
