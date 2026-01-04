@@ -150,25 +150,25 @@ GitDiffHistoryTabs {
     background: #888888;
 }
 
-/* GAC button styling */
-.gac-button {
-    background: #ff6b35;
-    color: white;
-    margin: 0 0 0 1;
-    text-style: bold;
-    width: 8;
-    height: 6;
-}
-
-.gac-button:hover {
-    background: #ff8c5a;
-}
-
-/* Commit message row layout */
-.commit-message-row {
+/* Action buttons row */
+.button-row {
     width: 100%;
-    height: 6;
-    margin: 0 0 1 0;
+    height: auto;
+    margin: 1 0;
+    align: left middle;
+}
+
+.action-button {
+    margin: 0 1 0 0;
+    min-width: 24;
+}
+
+/* GAC loading indicator */
+.gac-loading {
+    width: auto;
+    height: auto;
+    margin: 0 0 0 1;
+    display: none;
 }
 
 /* Commit Section Styles - Now in center panel tab */
@@ -199,15 +199,13 @@ GitDiffHistoryTabs {
 }
 
 .commit-button {
-    margin: 1 0;
-    background: #bb9af7;
-    color: white;
+    background: #9ece6a;
+    color: #1a1b26;
     text-style: bold;
-    width: 100%;
 }
 
 .commit-button:hover {
-    background: #9bb8ff;
+    background: #b4d88a;
 }
 
 .commit-section {
@@ -370,4 +368,64 @@ Tree > .directory {
 Tree > .tree--node {
     padding: 0 1;
     background: transparent;
+}
+
+/* File Tree tab */
+#tree-content {
+    width: 100%;
+    height: 1fr;
+}
+
+#file-tree {
+    width: 100%;
+    height: auto;
+    min-height: 10;
+    background: transparent;
+    padding: 1;
+}
+
+#file-tree > .tree--guides {
+    color: #6c7086;
+}
+
+#file-tree > .tree--cursor {
+    background: #313244;
+}
+
+/* Settings tab */
+.settings-section {
+    padding: 2;
+    width: 100%;
+}
+
+.settings-title {
+    text-style: bold;
+    color: #bb9af7;
+    padding: 1 0;
+}
+
+.settings-label {
+    color: $text;
+    padding: 1 0 0 0;
+}
+
+.settings-input {
+    width: 50%;
+    margin: 0 0 1 0;
+}
+
+.settings-hint {
+    color: #6c7086;
+    text-style: italic;
+}
+
+.settings-select {
+    width: 50%;
+    margin: 0 0 1 0;
+}
+
+.save-button {
+    margin: 2 0 0 0;
+    background: #9ece6a;
+    color: #1a1b26;
 }

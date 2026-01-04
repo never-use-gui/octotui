@@ -2,7 +2,7 @@
 
 import logging
 import re
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, List
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -10,29 +10,29 @@ logger = logging.getLogger(__name__)
 # Try to import from GAC
 try:
     import gac
-    from gac import init_cli
+    from gac import model_cli
 
     GAC_AVAILABLE = True
 except (ImportError, ModuleNotFoundError):
     GAC_AVAILABLE = False
     gac = None  # type: ignore
-    init_cli = None  # type: ignore
+    model_cli = None  # type: ignore
 
 
 def _extract_providers_from_gac() -> Optional[Dict[str, Tuple[str, str]]]:
-    """Extract provider list from GAC's init_cli module by reading source file.
+    """Extract provider list from GAC's model_cli module by reading source file.
 
     Returns:
         Dict mapping provider_key -> (display_name, default_model), or None if extraction fails
     """
-    if not GAC_AVAILABLE or init_cli is None:
+    if not GAC_AVAILABLE or model_cli is None:
         return None
 
     try:
         # Get the module file path
-        module_file = Path(init_cli.__file__)
+        module_file = Path(model_cli.__file__)
         if not module_file.exists():
-            logger.debug(f"GAC init_cli file not found: {module_file}")
+            logger.debug(f"GAC model_cli file not found: {module_file}")
             return None
 
         # Read the source file
@@ -43,7 +43,7 @@ def _extract_providers_from_gac() -> Optional[Dict[str, Tuple[str, str]]]:
         # Use bracket-counting to handle nested brackets (e.g., list comprehensions)
         start_match = re.search(r"providers\s*=\s*\[", source)
         if not start_match:
-            logger.debug("Could not find providers list in GAC's init_cli")
+            logger.debug("Could not find providers list in GAC's model_cli")
             return None
 
         # Find the matching closing bracket by counting brackets
@@ -75,7 +75,7 @@ def _extract_providers_from_gac() -> Optional[Dict[str, Tuple[str, str]]]:
         # Convert to our format: provider_key -> (display_name, default_model)
         result = {}
         for display_name, default_model in matches:
-            # Generate provider key using GAC's logic (from line 112 of init_cli.py)
+            # Generate provider key using GAC's logic (from model_cli.py)
             provider_key = (
                 display_name.lower()
                 .replace(".", "")
@@ -83,6 +83,21 @@ def _extract_providers_from_gac() -> Optional[Dict[str, Tuple[str, str]]]:
                 .replace("(", "")
                 .replace(")", "")
             )
+            
+            # Apply GAC's provider key normalization
+            if provider_key == "claude-code-oauth":
+                provider_key = "claude-code"
+            elif provider_key == "kimi-for-coding":
+                provider_key = "kimi-coding"
+            elif provider_key == "minimaxio":
+                provider_key = "minimax"
+            elif provider_key == "moonshot-ai":
+                provider_key = "moonshot"
+            elif provider_key == "qwenai-oauth":
+                provider_key = "qwen"
+            elif provider_key == "syntheticnew":
+                provider_key = "synthetic"
+            
             result[provider_key] = (display_name, default_model)
 
         logger.debug(f"Successfully extracted {len(result)} providers from GAC")
