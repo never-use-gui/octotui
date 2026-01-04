@@ -11,7 +11,7 @@
 
 **A terminal UI for Git, inspired by GitKraken**
 
-[Installation](#installation) • [Screenshots](#screenshots) • [Keybindings](#keybindings)
+[Installation](#installation) • [Screenshots](#screenshots)
 
 </div>
 
@@ -88,74 +88,6 @@ uv run octotui
 - Python 3.11+
 - Git
 - Terminal with 256+ colors
-
----
-
-## AI Commit Messages (Optional)
-
-```bash
-uv pip install 'gac>=0.18.0'
-```
-
-Then press `Ctrl+G` in OctoTUI to configure your AI provider.
-
----
-
-## Keybindings
-
-### Navigation
-| Key | Action |
-|-----|--------|
-| `↑/↓` | Navigate files/hunks |
-| `←/→` | Navigate between files |
-| `Enter` | Select file |
-| `Tab` | Cycle through buttons |
-| `e` | Edit file in external editor |
-
-### View Switching
-| Key | Tab |
-|-----|-----|
-| `1` | Status |
-| `2` | Files |
-| `3` | Unstaged |
-| `4` | Staged |
-| `5` | Commit |
-| `6` | Graph |
-| `7` | History |
-| `8` | Settings |
-
-### Git Operations
-| Key | Action |
-|-----|--------|
-| `s` | Stage selected file |
-| `u` | Unstage selected file |
-| `a` | Stage all changes |
-| `x` | Unstage all changes |
-| `c` | Commit |
-| `p` | Push |
-| `o` | Pull |
-| `r` | Refresh |
-| `b` | Switch branch |
-
-### AI & App
-| Key | Action |
-|-----|--------|
-| `g` | Generate AI commit message |
-| `Ctrl+G` | Configure GAC |
-| `h` | Help |
-| `q` | Quit |
-
----
-
-## Git Status Colors
-
-| Color | Meaning |
-|-------|----------|
-| Green | Staged |
-| Yellow | Modified (unstaged) |
-| Blue | Directory |
-| Purple | Untracked |
-| Red | Deleted |
 
 ---
 
