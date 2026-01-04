@@ -83,6 +83,19 @@ class GitDiffHistoryTabs(Widget):
                         classes="status-row",
                     ),
                     Static(""),
+                    Static("📦 Working Tree", classes="settings-title"),
+                    Static(""),
+                    Horizontal(
+                        Button("✅ Stage All", id="stage-all-button", classes="action-button"),
+                        Button("❌ Unstage All", id="unstage-all-button", classes="action-button"),
+                        classes="button-row",
+                    ),
+                    Horizontal(
+                        Button("📥 Stash", id="stash-button", classes="action-button"),
+                        Button("📤 Pop Stash", id="pop-stash-button", classes="action-button"),
+                        classes="button-row",
+                    ),
+                    Static(""),
                     Static("🔀 Branch Operations", classes="settings-title"),
                     Static(""),
                     Label("Switch Branch:", classes="settings-label"),
@@ -96,19 +109,6 @@ class GitDiffHistoryTabs(Widget):
                     Horizontal(
                         Input(placeholder="new-branch-name", id="new-branch-input", classes="settings-input branch-input"),
                         Button("➕ Create", id="create-branch-button", classes="action-button"),
-                        classes="button-row",
-                    ),
-                    Static(""),
-                    Static("📦 Working Tree", classes="settings-title"),
-                    Static(""),
-                    Horizontal(
-                        Button("✅ Stage All", id="stage-all-button", classes="action-button"),
-                        Button("❌ Unstage All", id="unstage-all-button", classes="action-button"),
-                        classes="button-row",
-                    ),
-                    Horizontal(
-                        Button("📥 Stash", id="stash-button", classes="action-button"),
-                        Button("📤 Pop Stash", id="pop-stash-button", classes="action-button"),
                         classes="button-row",
                     ),
                     Static(""),
@@ -916,8 +916,12 @@ class GitDiffViewer(App):
             # Skip if we're programmatically updating the dropdown
             if self._updating_branch_select:
                 return
-                
+            
+            # Skip if value is BLANK or not a valid string
             branch_name = event.value
+            if branch_name is Select.BLANK or not isinstance(branch_name, str):
+                return
+                
             current_branch = self.git_sidebar.get_current_branch()
             
             # Skip if already on this branch (avoids spurious errors when populating)
@@ -1481,6 +1485,7 @@ class GitDiffViewer(App):
             if success:
                 # Rebuild file list and refresh
                 self.build_file_list()
+                self._populate_status_tab()  # Update status tab counts
                 if self.file_list:
                     self.current_file_index = 0
                     self._navigate_to_current_file()
@@ -1490,7 +1495,7 @@ class GitDiffViewer(App):
                         diff_content = self.query_one("#unstaged-content", VerticalScroll)
                         diff_content.remove_children()
                         diff_content.mount(
-                            Static("All changes staged! Press 3 to view staged changes.", classes="info")
+                            Static("All changes staged! Press 4 to view staged changes.", classes="info")
                         )
                     except Exception:
                         pass
@@ -1507,6 +1512,7 @@ class GitDiffViewer(App):
             if success:
                 # Rebuild file list and refresh
                 self.build_file_list()
+                self._populate_status_tab()  # Update status tab counts
                 if self.file_list:
                     self.current_file_index = 0
                     self._navigate_to_current_file()
@@ -1516,7 +1522,7 @@ class GitDiffViewer(App):
                         diff_content = self.query_one("#staged-content", VerticalScroll)
                         diff_content.remove_children()
                         diff_content.mount(
-                            Static("All changes unstaged! Press 2 to view unstaged changes.", classes="info")
+                            Static("All changes unstaged! Press 3 to view unstaged changes.", classes="info")
                         )
                     except Exception:
                         pass
