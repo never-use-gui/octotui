@@ -202,6 +202,8 @@ GitDiffHistoryTabs {
     background: #9ece6a;
     color: #1a1b26;
     text-style: bold;
+    min-width: 16;
+    width: auto;
 }
 
 .commit-button:hover {
@@ -215,7 +217,21 @@ GitDiffHistoryTabs {
     overflow-y: auto;
 }
 
+/* Status tab styling */
+.status-row {
+    height: auto;
+    width: 100%;
+    margin: 0 0 1 0;
+}
 
+.status-label {
+    width: 10;
+    color: #6c7086;
+}
+
+.status-value {
+    width: 1fr;
+}
 
 /* Hunk styling */
 .hunk-container {

@@ -621,6 +621,24 @@ class GitStatusSidebar:
         except Exception:
             return "unknown"
 
+    def get_branches(self) -> list[str]:
+        """Get list of all local branch names.
+
+        Returns:
+            List of branch names, sorted with current branch first
+        """
+        if not self.repo:
+            return []
+
+        try:
+            current = self.get_current_branch()
+            branches = [head.name for head in self.repo.heads]
+            # Sort with current branch first
+            branches.sort(key=lambda b: (b != current, b))
+            return branches
+        except Exception:
+            return []
+
     def commit_staged_changes(self, message: str) -> bool:
         """Commit staged changes.
 
