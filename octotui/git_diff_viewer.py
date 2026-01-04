@@ -1165,16 +1165,21 @@ class GitDiffViewer(App):
 
             if success:
                 self.notify(
-                    f"Successfully committed changes with message: {message}",
+                    f"Committed: {subject[:50]}{'...' if len(subject) > 50 else ''}",
                     severity="information",
                 )
                 # Clear the commit message inputs
                 commit_input.value = ""
                 commit_body.text = ""
 
+                # Invalidate git cache to get fresh state
+                self.git_sidebar._invalidate_cache()
+                
                 # Rebuild file list and refresh view
                 self.build_file_list()
                 self.populate_commit_history()
+                self.populate_file_tree()  # Refresh file tree too
+                self.update_status_bar()  # Update status bar immediately
                 
                 if self.file_list:
                     self._navigate_to_current_file()
