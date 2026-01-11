@@ -173,6 +173,104 @@ class GitGraphRenderer:
         # Simple renderer has minimal state to reset
         pass
     
+    def _format_ref_labels(self, commit: CommitNode, max_label_width: int = 40) -> tuple[str, int]:
+        """Format ref labels (branches and tags) for a commit.
+        
+        Args:
+            commit: Commit to format refs for
+            max_label_width: Maximum width for all labels combined
+            
+        Returns:
+            Tuple of (formatted_labels_with_markup, display_length)
+            
+        Styling:
+            - Current branch: Green bold with * → (main*)
+            - Local branches: Cyan → (feature/foo)
+            - Tags: Yellow with 🏷️ → (🏷️ v1.0.0)
+            - Remote branches: Dim gray → (origin/main)
+        """
+        from octotui.graph_data import RefType
+        
+        if not hasattr(commit, 'refs') or not commit.refs:
+            return "", 0
+        
+        try:
+            labels = []
+            
+            # Sort refs: current first, then branches, then tags, then remotes
+            def ref_sort_key(ref):
+                if getattr(ref, 'is_current', False):
+                    return (0, ref.short_name())
+                elif ref.ref_type == RefType.BRANCH:
+                    return (1, ref.short_name())
+                elif ref.ref_type == RefType.TAG:
+                    return (2, ref.short_name())
+                elif ref.ref_type == RefType.REMOTE_BRANCH:
+                    return (3, ref.short_name())
+                else:
+                    return (4, ref.short_name())
+            
+            sorted_refs = sorted(commit.refs, key=ref_sort_key)
+            
+            for ref in sorted_refs:
+                ref_name = ref.short_name()
+                is_current = getattr(ref, 'is_current', False)
+                
+                # Truncate long ref names
+                if len(ref_name) > 20:
+                    ref_name = ref_name[:17] + "..."
+                
+                # Style based on ref type
+                if is_current:
+                    # Current branch: Green bold with asterisk
+                    labels.append(f"[bold #a6e3a1]({ref_name}*)[/bold #a6e3a1]")
+                elif ref.ref_type == RefType.TAG:
+                    # Tags: Yellow with tag emoji
+                    labels.append(f"[#f9e2af](🏷️ {ref_name})[/#f9e2af]")
+                elif ref.ref_type == RefType.REMOTE_BRANCH:
+                    # Remote branches: Dim gray
+                    labels.append(f"[dim #6c7086]({ref_name})[/dim #6c7086]")
+                elif ref.ref_type == RefType.BRANCH:
+                    # Local branches: Cyan
+                    labels.append(f"[#89dceb]({ref_name})[/#89dceb]")
+                else:
+                    # HEAD or other: Purple
+                    labels.append(f"[#cba6f7]({ref_name})[/#cba6f7]")
+            
+            if not labels:
+                return "", 0
+            
+            # Join labels with space
+            result = " ".join(labels)
+            
+            # Calculate display length (without markup)
+            display_len = len(self._strip_markup(result))
+            
+            # Truncate if too long - keep first few labels
+            if display_len > max_label_width:
+                truncated_labels = []
+                current_len = 0
+                for label in labels:
+                    label_len = len(self._strip_markup(label))
+                    if current_len + label_len + 1 <= max_label_width - 3:  # -3 for "..."
+                        truncated_labels.append(label)
+                        current_len += label_len + 1
+                    else:
+                        break
+                
+                if truncated_labels:
+                    result = " ".join(truncated_labels) + "[#6c7086]...[/#6c7086]"
+                    display_len = len(self._strip_markup(result))
+                else:
+                    # Even first label is too long, truncate it
+                    result = labels[0][:max_label_width - 3] + "..."
+                    display_len = max_label_width
+            
+            return result, display_len
+            
+        except Exception:
+            return "", 0
+    
     def _format_commit_info(self, commit: CommitNode, max_width: int, depth: int = 0) -> str:
         """Format commit information with strict width containment.
         
@@ -192,22 +290,8 @@ class GitGraphRenderer:
             sha_part = 'unknown'
         sha_len = len(sha_part)
         
-        # Current branch indicator - truncate aggressively with error handling
-        branch_part = ""
-        branch_len = 0
-        try:
-            if hasattr(commit, 'refs') and commit.refs:
-                for ref in commit.refs:
-                    if hasattr(ref, 'is_current') and ref.is_current:
-                        branch_name = getattr(ref, 'short_name', 'branch')
-                        # Limit branch name VERY aggressively to 10 chars max
-                        if len(branch_name) > 10:
-                            branch_name = branch_name[:8] + "..."
-                        branch_part = f"{branch_name}* "
-                        branch_len = len(branch_part)
-                        break
-        except Exception:
-            pass  # Skip branch part if any error
+        # Get ref labels (branches/tags) with proper styling
+        ref_labels, ref_labels_len = self._format_ref_labels(commit, max_label_width=35)
         
         # Author name (always limited to 6 chars) with error handling
         try:
@@ -222,20 +306,22 @@ class GitGraphRenderer:
         author_len = len(author_part)
         
         # Calculate remaining width for message (subtract all components and spaces)
-        total_fixed_len = sha_len + branch_len + author_len + (3 if branch_part else 2)  # spaces between components
+        # Format: SHA [ref_labels] message - author
+        spaces_needed = 2 + (1 if ref_labels else 0)  # spaces: SHA_MSG, MSG_AUTHOR, optionally REF_MSG
+        total_fixed_len = sha_len + ref_labels_len + author_len + spaces_needed
         available_message_len = max_width - total_fixed_len
         
         # Ensure reasonable bounds for message
         if available_message_len < 5:
-            # Not enough space, truncate other components
-            available_message_len = 5
-            if branch_len > 0:
-                branch_part = branch_part[:max(0, branch_len - 5)]
-                branch_len = len(branch_part)
-                total_fixed_len = sha_len + branch_len + author_len + (3 if branch_part else 2)
-                available_message_len = max_width - total_fixed_len
+            # Not enough space, reduce ref labels
+            available_message_len = 15
+            # Recalculate with shorter refs
+            ref_labels, ref_labels_len = self._format_ref_labels(commit, max_label_width=15)
+            spaces_needed = 2 + (1 if ref_labels else 0)
+            total_fixed_len = sha_len + ref_labels_len + author_len + spaces_needed
+            available_message_len = max(5, max_width - total_fixed_len)
         
-        available_message_len = min(30, max(5, available_message_len))  # Between 5-30 chars
+        available_message_len = min(35, max(5, available_message_len))  # Between 5-35 chars
         
         # Get safe message with error handling
         try:
@@ -249,11 +335,10 @@ class GitGraphRenderer:
         if len(message) > available_message_len:
             message = message[:available_message_len - 3] + "..."
         
-        # Build raw components without markup first
-        raw_parts = []
-        raw_parts.append(sha_part)
-        if branch_part:
-            raw_parts.append(branch_part)
+        # Build raw components without markup first for length calculation
+        raw_parts = [sha_part]
+        if ref_labels_len > 0:
+            raw_parts.append(self._strip_markup(ref_labels))
         raw_parts.append(message)
         raw_parts.append(author_part)
         
@@ -264,24 +349,15 @@ class GitGraphRenderer:
             # Emergency truncation of message
             excess = len(raw_result) - max_width
             message = message[:max(1, len(message) - excess - 3)] + "..."
-            
-            # Rebuild
-            raw_parts = []
-            raw_parts.append(sha_part)
-            if branch_part:
-                raw_parts.append(branch_part)
-            raw_parts.append(message)
-            raw_parts.append(author_part)
-            raw_result = ' '.join(raw_parts)
         
-        # Add markup now that we know the total size is correct
-        # We need to re-add the markup to the individual parts
+        # Build final result with markup
+        # Format: SHA ref_labels message - author
         parts_with_markup = []
         parts_with_markup.append(f"[#89b4fa]{sha_part}[/#89b4fa]")
-        if branch_part:
-            parts_with_markup.append(f"[#a6e3a1]{branch_part.rstrip()}[/#a6e3a1] ")
-        parts_with_markup.append(f"[#cdd6f4]{message}[/#cdd6f4]")
-        parts_with_markup.append(f"[#6C7086]{author_part}[/#6C7086]")
+        if ref_labels:
+            parts_with_markup.append(f" {ref_labels}")
+        parts_with_markup.append(f" [#cdd6f4]{message}[/#cdd6f4]")
+        parts_with_markup.append(f" [#6C7086]{author_part}[/#6C7086]")
         
         return ''.join(parts_with_markup)
     
