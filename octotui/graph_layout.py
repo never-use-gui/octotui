@@ -5,8 +5,8 @@ the visual position (lane/column) for each commit in the graph, ensuring
 that parallel branches are displayed side-by-side without overlap.
 """
 
-from typing import Dict, List, Set, Optional, Tuple
-from collections import deque, defaultdict
+from typing import Dict, List, Set, Optional
+from collections import defaultdict
 import git
 from octotui.graph_data import (
     CommitGraph, CommitNode, GraphEdge, GitRef, RefType, CommitType
@@ -110,14 +110,14 @@ class GraphLayoutEngine:
             try:
                 head_commit = self.repo.head.commit.hexsha
                 self.graph.head_sha = head_commit
-            except:
+            except (git.GitCommandError, ValueError, TypeError):
                 head_commit = None
             
             # Get current branch
             try:
                 if not self.repo.head.is_detached:
                     self.graph.current_branch = self.repo.active_branch.name
-            except:
+            except (git.GitCommandError, TypeError):
                 pass
             
             # Load local branches
@@ -140,7 +140,7 @@ class GraphLayoutEngine:
                             commit_sha=ref.commit.hexsha,
                         )
                         self.graph.add_ref(git_ref)
-            except:
+            except (git.GitCommandError, ValueError, AttributeError):
                 pass
             
             # Load tags
@@ -152,7 +152,7 @@ class GraphLayoutEngine:
                         commit_sha=tag.commit.hexsha,
                     )
                     self.graph.add_ref(ref)
-            except:
+            except (git.GitCommandError, ValueError, AttributeError):
                 pass
         
         except Exception:
@@ -210,6 +210,10 @@ class GraphLayoutEngine:
         for commit in commits:
             sha = commit.sha
             
+            # Store active lanes at this row BEFORE processing (for rendering)
+            # This captures the state of lanes as they appear at this row
+            commit.active_lanes = active_lanes.copy()
+            
             # Check if any previous commit reserved a lane for this commit
             reserved_lanes = parent_lane_reservations.get(sha, [])
             
@@ -257,9 +261,6 @@ class GraphLayoutEngine:
             else:
                 # No parents - this is an initial commit, release its lane
                 active_lanes.discard(commit.lane)
-            
-            # Store active lanes at this row for rendering vertical lines
-            commit.active_lanes = active_lanes.copy()
             
             # Assign color based on lane for consistent branch coloring
             commit.color_index = commit.lane % len(self.graph.colors)
@@ -312,95 +313,3 @@ class GraphLayoutEngine:
                     color_index=commit.color_index,
                 )
                 self.graph.add_edge(edge)
-
-
-class GraphRenderer:
-    """Renders the commit graph as a DAG with vertical dotted lines.
-    
-    This renderer creates a clean, minimalist DAG visualization showing
-    parent-child relationships with vertical dotted lines and proper alignment.
-    """
-    
-    # Graph characters for clean timeline visualization
-    VERTICAL_DOTTED = "┊" # ┊ dotted vertical line for parent-child connections
-    CIRCLE = "●"        # ● solid circle representing one commit
-    BLANK = " "         # space for layout
-    
-    def __init__(self, graph: CommitGraph):
-        """Initialize renderer with a graph for clean timeline visualization."""
-        self.graph = graph
-        self.column_spacing = 3  # Clean spacing for single column
-        self._build_timeline_structure()  # Build simple timeline structure
-    
-    def _build_timeline_structure(self) -> None:
-        """Build simple timeline structure for single-branch commit visualization.
-        
-        Creates a clean vertical timeline where each commit is a solid circle
-        connected by dotted lines to show parent-child relationships.
-        """
-        # For clean timeline, we just need to ensure commits are properly ordered
-        # No complex DAG structure needed for single-branch view
-        pass
-    
-    def render_row(self, commit: CommitNode, show_details: bool = True) -> str:
-        """Render a clean timeline row with circle and dotted line.
-        
-        Args:
-            commit: Commit to render
-            show_details: Whether to show commit details (message, author, etc.)
-            
-        Returns:
-            String representation of the timeline row with proper alignment
-        """
-        # Build simple timeline: solid circle + dotted line + details
-        circle = self.CIRCLE
-        dotted_line = self.VERTICAL_DOTTED
-        
-        if not show_details:
-            return f"{circle}"
-        
-        # Build commit details with proper spacing
-        details_part = self._render_commit_timeline_details(commit)
-        
-        # Return timeline row: circle + dotted line + details
-        return f"{circle} {dotted_line} {details_part}"
-    
-    def _render_commit_timeline_details(self, commit: CommitNode) -> str:
-        """Render commit details in timeline format.
-        
-        Shows: SHA, message, author in a clean, aligned format.
-        """
-        # SHA in highlighted color
-        sha_part = f"[#7dcfff]{commit.short_sha}[/#7dcfff]"
-        
-        # Current branch indicator if this is HEAD
-        branch_indicator = ""
-        for ref in commit.refs:
-            if ref.is_current:
-                branch_indicator = f"[bold #9ece6a]({ref.short_name()}*)[/bold #9ece6a] "
-                break
-        
-        # Commit message (truncated if needed)
-        message = commit.short_message(max_length=50)
-        
-        # Author name
-        author_part = f"[dim] - {commit.author}[/dim]"
-        
-        # Combine all parts
-        return f"{sha_part} {branch_indicator}{message}{author_part}"
-    
-
-    
-    def _calculate_graph_width(self) -> int:
-        """Calculate width needed for simple timeline (single column)."""
-        # Simple timeline needs minimal width for single column
-        return 1
-    
-    def _column_x(self, lane: int) -> int:
-        """Get the X position for a given lane/column."""
-        return (lane * self.column_spacing) + 2
-    
-
-    
-
-    
