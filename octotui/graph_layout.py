@@ -160,20 +160,139 @@ class GraphLayoutEngine:
             pass
     
     def _calculate_layout(self) -> None:
-        """Calculate simple single-column timeline layout.
+        """Calculate multi-lane graph layout based on branch topology.
         
-        Creates a clean vertical timeline where each commit is in the same column,
-        perfect for the requested dot-and-line visualization.
+        Implements a proper lane assignment algorithm that:
+        - Assigns each branch to its own lane
+        - Main branch typically stays in lane 0
+        - Feature branches get adjacent lanes
+        - Reuses lanes when branches merge
+        - Tracks active lanes at each row for rendering
+        
+        The algorithm processes commits top-to-bottom (topological order):
+        1. For each commit, check if a lane was reserved by a child
+        2. First parent continues the same lane (main line)
+        3. Additional parents (merge sources) get new lanes
+        4. Track active lanes and merge sources for rendering
         """
-        # For simple timeline, all commits go in lane 0 (single column)
         commits = self.graph.get_commits_in_order()
+        if not commits:
+            self.graph.max_lanes = 1
+            return
+        
+        # Maps parent SHA -> list of lanes that will lead to it
+        # When we encounter this parent, we assign it to the first lane
+        # and mark other lanes as merge sources
+        parent_lane_reservations: Dict[str, List[int]] = defaultdict(list)
+        
+        # Currently active lanes (have a continuous line through current row)
+        active_lanes: Set[int] = set()
+        
+        # Try to identify main branch to keep it in lane 0
+        main_branch_head = self._find_main_branch_head()
+        
+        def get_free_lane(preferred: Optional[int] = None) -> int:
+            """Get the lowest available lane number.
+            
+            Args:
+                preferred: Preferred lane to use if available
+            
+            Returns:
+                Available lane number
+            """
+            if preferred is not None and preferred not in active_lanes:
+                return preferred
+            lane = 0
+            while lane in active_lanes:
+                lane += 1
+            return lane
         
         for commit in commits:
-            commit.lane = 0  # All commits in the same column
-            commit.color_index = 0  # Same color for all (single branch)
+            sha = commit.sha
+            
+            # Check if any previous commit reserved a lane for this commit
+            reserved_lanes = parent_lane_reservations.get(sha, [])
+            
+            if reserved_lanes:
+                # Use the first reserved lane (typically the "main" line)
+                # Sort to prefer lower lane numbers for main line
+                reserved_lanes_sorted = sorted(reserved_lanes)
+                commit.lane = reserved_lanes_sorted[0]
+                
+                # Other reserved lanes are merge source lanes (they converge here)
+                if len(reserved_lanes_sorted) > 1:
+                    commit.merge_source_lanes = reserved_lanes_sorted[1:]
+                    # Release the merge source lanes (they end at this commit)
+                    for lane in reserved_lanes_sorted[1:]:
+                        active_lanes.discard(lane)
+            else:
+                # New branch head - no child reserved a lane for us
+                # Prefer lane 0 for main branch
+                if main_branch_head and sha == main_branch_head:
+                    commit.lane = get_free_lane(preferred=0)
+                else:
+                    commit.lane = get_free_lane()
+                active_lanes.add(commit.lane)
+            
+            # Determine if this commit continues down (has parents in our graph)
+            has_parents_in_graph = any(
+                p_sha in self.graph.commits for p_sha in commit.parent_shas
+            )
+            commit.continues_down = has_parents_in_graph
+            
+            # Reserve lanes for this commit's parents
+            if commit.parent_shas:
+                # First parent continues in the same lane (main development line)
+                first_parent = commit.parent_shas[0]
+                if first_parent in self.graph.commits:
+                    parent_lane_reservations[first_parent].append(commit.lane)
+                
+                # Additional parents (merge sources) get new lanes
+                for parent_sha in commit.parent_shas[1:]:
+                    if parent_sha in self.graph.commits:
+                        # Allocate new lane for the merge source branch
+                        merge_lane = get_free_lane()
+                        active_lanes.add(merge_lane)
+                        parent_lane_reservations[parent_sha].append(merge_lane)
+            else:
+                # No parents - this is an initial commit, release its lane
+                active_lanes.discard(commit.lane)
+            
+            # Store active lanes at this row for rendering vertical lines
+            commit.active_lanes = active_lanes.copy()
+            
+            # Assign color based on lane for consistent branch coloring
+            commit.color_index = commit.lane % len(self.graph.colors)
         
-        # Set max lanes to 1 for single column
-        self.graph.max_lanes = 1
+        # Calculate max lanes used
+        if commits:
+            self.graph.max_lanes = max(
+                max(c.lane for c in commits) + 1,
+                max((max(c.active_lanes) + 1 if c.active_lanes else 1) for c in commits)
+            )
+        else:
+            self.graph.max_lanes = 1
+    
+    def _find_main_branch_head(self) -> Optional[str]:
+        """Find the HEAD commit of the main branch (main or master).
+        
+        Returns:
+            SHA of main branch head, or None if not found
+        """
+        # Look for main or master branch
+        for branch_name in ['main', 'master']:
+            for ref_name, ref in self.graph.refs.items():
+                if ref.ref_type == RefType.BRANCH and ref.short_name() == branch_name:
+                    return ref.commit_sha
+        
+        # Fallback: use current branch if available
+        if self.graph.current_branch:
+            for ref_name, ref in self.graph.refs.items():
+                if ref.ref_type == RefType.BRANCH and ref.short_name() == self.graph.current_branch:
+                    return ref.commit_sha
+        
+        # Last resort: use HEAD
+        return self.graph.head_sha
     
     def _build_edges(self) -> None:
         """Build edges between commits based on parent-child relationships."""
