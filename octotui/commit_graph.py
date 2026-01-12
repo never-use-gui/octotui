@@ -1171,7 +1171,7 @@ class GitGraphRenderer:
             total_fixed_len = sha_len + ref_labels_len + author_len + spaces_needed
             available_message_len = max(5, max_width - total_fixed_len)
         
-        available_message_len = min(45, max(5, available_message_len))  # Between 5-45 chars (increased from 35)
+        available_message_len = max(5, available_message_len)  # Minimum 5 chars, no maximum cap
         
         # Get safe message with error handling
         try:
