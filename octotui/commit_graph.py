@@ -256,21 +256,30 @@ class GitGraphRenderer:
         return False
     
     def render_commit_line(self, commit: CommitNode, max_width: int = 80) -> str:
-        """Render a clean single-line commit visualization with branch depth indicators.
+        """Render a clean single-line commit visualization with branch labels in left column.
+        
+        Format: [label_column] [graph] [sha] [message] [author]
+        Example:
+            main*          ● │ abc1234 Commit message - author
+            origin/main    │ │ 
+            feature/foo    │ ● def5678 Another commit - author
         
         Args:
             commit: The commit to render
             max_width: Maximum width for the line (default 80 for better containment)
             
         Returns:
-            Formatted string with clean timeline and depth visualization
+            Formatted string with label column, graph, and commit info
             
         Note: Includes comprehensive error handling to prevent stylesheet errors
         """
+        # Fixed width for label column
+        LABEL_COLUMN_WIDTH = 15
+        
         try:
             # Validate commit data
             if not commit or not hasattr(commit, 'sha'):
-                return "[error] Invalid commit data"
+                return " " * LABEL_COLUMN_WIDTH + "[error] Invalid commit data"
             
             # Calculate branch depth for this commit with error handling
             try:
@@ -290,6 +299,12 @@ class GitGraphRenderer:
             except (IndexError, TypeError):
                 commit_color = self.depth_colors[0]  # Fallback to blue
             
+            # Build label column (left side with branch/tag labels)
+            try:
+                label_column = self._format_label_column(commit, width=LABEL_COLUMN_WIDTH)
+            except Exception as label_error:
+                label_column = " " * LABEL_COLUMN_WIDTH
+            
             # Build graph part with depth notation and validation
             try:
                 # Use multi-lane graph columns if graph context is available
@@ -303,26 +318,27 @@ class GitGraphRenderer:
                 graph_part = f"[#89b4fa]{commit_symbol} │[/#89b4fa]"
             
             # Calculate available width for commit info
+            # Subtract label column width and graph width
             try:
                 graph_part_display_len = len(self._strip_markup(graph_part))
-                available_width = max(20, max_width - graph_part_display_len)  # Minimum 20 chars
+                available_width = max(20, max_width - LABEL_COLUMN_WIDTH - graph_part_display_len - 1)  # -1 for space
             except Exception:
-                available_width = 60  # Safe fallback
+                available_width = 50  # Safe fallback
             
-            # Format commit info with error handling
+            # Format commit info with error handling (no inline refs - they're in label column)
             try:
-                commit_info = self._format_commit_info(commit, available_width, depth)
+                commit_info = self._format_commit_info(commit, available_width, depth, include_refs=False)
             except Exception as info_error:
                 # Fallback to simple format if commit info fails
                 safe_sha = getattr(commit, 'short_sha', commit.sha[:8])[:8]
                 commit_info = f"[#89b4fa]{safe_sha}[/#89b4fa] [#cdd6f4]Error formatting[/#cdd6f4]"
             
-            # Final result with validation
-            result = f"{graph_part} {commit_info}"
+            # Final result: label_column + graph + commit_info
+            result = f"{label_column}{graph_part} {commit_info}"
             
             # Validate result doesn't contain problematic characters
             if not self._is_safe_markup(result):
-                return f"[#89b4fa]{commit_symbol} │[/#89b4fa] [#89b4fa]{commit.short_sha[:8]}[/#89b4fa] [#cdd6f4]{commit.message[:20]}...[/#cdd6f4]"
+                return f"{' ' * LABEL_COLUMN_WIDTH}[#89b4fa]{commit_symbol} │[/#89b4fa] [#89b4fa]{commit.short_sha[:8]}[/#89b4fa] [#cdd6f4]{commit.message[:20]}...[/#cdd6f4]"
             
             return result
             
@@ -331,9 +347,9 @@ class GitGraphRenderer:
             try:
                 safe_sha = getattr(commit, 'short_sha', getattr(commit, 'sha', 'unknown')[:8])[:8]
                 safe_msg = getattr(commit, 'message', 'Error rendering')[:20]
-                return f"[#89b4fa]● │[/#89b4fa] [#89b4fa]{safe_sha}[/#89b4fa] [#cdd6f4]{safe_msg}...[/#cdd6f4]"
+                return f"{' ' * LABEL_COLUMN_WIDTH}[#89b4fa]● │[/#89b4fa] [#89b4fa]{safe_sha}[/#89b4fa] [#cdd6f4]{safe_msg}...[/#cdd6f4]"
             except Exception:
-                return "[#89b4fa]● │[/#89b4fa] [#89b4fa]error[/#89b4fa] [#cdd6f4]render error[/#cdd6f4]"
+                return f"{' ' * LABEL_COLUMN_WIDTH}[#89b4fa]● │[/#89b4fa] [#89b4fa]error[/#89b4fa] [#cdd6f4]render error[/#cdd6f4]"
     
     def _is_safe_markup(self, text: str) -> bool:
         """Check if text contains safe Textual markup.
@@ -384,8 +400,147 @@ class GitGraphRenderer:
         # Simple renderer has minimal state to reset
         pass
     
+    def _format_label_column(self, commit: CommitNode, width: int = 15) -> str:
+        """Format branch labels for a dedicated left column.
+        
+        Creates a fixed-width left column with branch/tag labels styled
+        like GitKraken's branch badges.
+        
+        Args:
+            commit: Commit to format refs for
+            width: Fixed width for the label column (default 15 chars)
+            
+        Returns:
+            Fixed-width string with styled labels, padded/truncated to fit
+            
+        Styling:
+            - Current branch: Green bold with * → main*
+            - Local branches: Cyan → feature/foo
+            - Tags: Yellow → v1.0.0
+            - Remote branches: Dim gray → origin/main
+        """
+        from octotui.graph_data import RefType
+        
+        if not hasattr(commit, 'refs') or not commit.refs:
+            # Return empty column with proper width
+            return " " * width
+        
+        try:
+            labels = []
+            labels_display = []  # Track display strings without markup for length calc
+            
+            # Sort refs: current first, then branches, then tags, then remotes
+            def ref_sort_key(ref):
+                if getattr(ref, 'is_current', False):
+                    return (0, ref.short_name())
+                elif ref.ref_type == RefType.BRANCH:
+                    return (1, ref.short_name())
+                elif ref.ref_type == RefType.TAG:
+                    return (2, ref.short_name())
+                elif ref.ref_type == RefType.REMOTE_BRANCH:
+                    return (3, ref.short_name())
+                else:
+                    return (4, ref.short_name())
+            
+            sorted_refs = sorted(commit.refs, key=ref_sort_key)
+            
+            for ref in sorted_refs:
+                ref_name = ref.short_name()
+                is_current = getattr(ref, 'is_current', False)
+                
+                # Style based on ref type (no parentheses - clean badge style)
+                if is_current:
+                    # Current branch: Green bold with asterisk
+                    display_name = f"{ref_name}*"
+                    labels.append(f"[bold #a6e3a1]{display_name}[/bold #a6e3a1]")
+                    labels_display.append(display_name)
+                elif ref.ref_type == RefType.TAG:
+                    # Tags: Yellow
+                    display_name = f"🏷{ref_name}"
+                    labels.append(f"[#f9e2af]{display_name}[/#f9e2af]")
+                    labels_display.append(display_name)
+                elif ref.ref_type == RefType.REMOTE_BRANCH:
+                    # Remote branches: Dim gray
+                    display_name = ref_name
+                    labels.append(f"[dim #6c7086]{display_name}[/dim #6c7086]")
+                    labels_display.append(display_name)
+                elif ref.ref_type == RefType.BRANCH:
+                    # Local branches: Cyan
+                    display_name = ref_name
+                    labels.append(f"[#7dcfff]{display_name}[/#7dcfff]")
+                    labels_display.append(display_name)
+                else:
+                    # HEAD or other: Purple
+                    display_name = ref_name
+                    labels.append(f"[#cba6f7]{display_name}[/#cba6f7]")
+                    labels_display.append(display_name)
+            
+            if not labels:
+                return " " * width
+            
+            # Build the column - try to fit labels with space separator
+            result_parts = []
+            result_display_parts = []
+            current_len = 0
+            
+            for i, (label, display) in enumerate(zip(labels, labels_display)):
+                separator_len = 1 if result_parts else 0  # Space between labels
+                label_len = len(display)
+                
+                if current_len + separator_len + label_len <= width - 1:  # -1 for trailing space
+                    if result_parts:
+                        result_parts.append(" ")
+                        result_display_parts.append(" ")
+                    result_parts.append(label)
+                    result_display_parts.append(display)
+                    current_len += separator_len + label_len
+                elif not result_parts:
+                    # First label is too long - truncate it
+                    if label_len > width - 3:
+                        truncated = display[:width - 3] + ".."
+                        # Re-apply styling to truncated name
+                        if "#a6e3a1" in label:
+                            result_parts.append(f"[bold #a6e3a1]{truncated}[/bold #a6e3a1]")
+                        elif "#f9e2af" in label:
+                            result_parts.append(f"[#f9e2af]{truncated}[/#f9e2af]")
+                        elif "#6c7086" in label:
+                            result_parts.append(f"[dim #6c7086]{truncated}[/dim #6c7086]")
+                        elif "#7dcfff" in label:
+                            result_parts.append(f"[#7dcfff]{truncated}[/#7dcfff]")
+                        else:
+                            result_parts.append(f"[#cba6f7]{truncated}[/#cba6f7]")
+                        result_display_parts.append(truncated)
+                        current_len = len(truncated)
+                    else:
+                        result_parts.append(label)
+                        result_display_parts.append(display)
+                        current_len = label_len
+                    break
+                else:
+                    # Can't fit more labels
+                    break
+            
+            # Join and pad to fixed width
+            result = "".join(result_parts)
+            display_result = "".join(result_display_parts)
+            display_len = len(display_result)
+            
+            # Pad with spaces to reach fixed width
+            padding_needed = width - display_len
+            if padding_needed > 0:
+                result = result + " " * padding_needed
+            
+            return result
+            
+        except Exception:
+            return " " * width
+    
     def _format_ref_labels(self, commit: CommitNode, max_label_width: int = 40) -> tuple[str, int]:
         """Format ref labels (branches and tags) for a commit.
+        
+        NOTE: This method is kept for backwards compatibility but is no longer
+        used in the main render path. Labels now appear in the left column via
+        _format_label_column() instead of inline.
         
         Args:
             commit: Commit to format refs for
@@ -482,12 +637,14 @@ class GitGraphRenderer:
         except Exception:
             return "", 0
     
-    def _format_commit_info(self, commit: CommitNode, max_width: int, depth: int = 0) -> str:
+    def _format_commit_info(self, commit: CommitNode, max_width: int, depth: int = 0, include_refs: bool = False) -> str:
         """Format commit information with strict width containment.
         
         Args:
             commit: Commit to format
             max_width: Maximum width for commit info (actual display characters, not including markup)
+            depth: Branch depth level (unused, kept for compatibility)
+            include_refs: Whether to include ref labels inline (default False - refs are in label column)
             
         Returns:
             Formatted commit string that strictly fits within max_width
@@ -501,8 +658,11 @@ class GitGraphRenderer:
             sha_part = 'unknown'
         sha_len = len(sha_part)
         
-        # Get ref labels (branches/tags) with proper styling
-        ref_labels, ref_labels_len = self._format_ref_labels(commit, max_label_width=35)
+        # Get ref labels only if requested (now refs are typically in left column)
+        ref_labels = ""
+        ref_labels_len = 0
+        if include_refs:
+            ref_labels, ref_labels_len = self._format_ref_labels(commit, max_label_width=35)
         
         # Author name (always limited to 6 chars) with error handling
         try:
@@ -526,13 +686,14 @@ class GitGraphRenderer:
         if available_message_len < 5:
             # Not enough space, reduce ref labels
             available_message_len = 15
-            # Recalculate with shorter refs
-            ref_labels, ref_labels_len = self._format_ref_labels(commit, max_label_width=15)
+            if include_refs:
+                # Recalculate with shorter refs
+                ref_labels, ref_labels_len = self._format_ref_labels(commit, max_label_width=15)
             spaces_needed = 2 + (1 if ref_labels else 0)
             total_fixed_len = sha_len + ref_labels_len + author_len + spaces_needed
             available_message_len = max(5, max_width - total_fixed_len)
         
-        available_message_len = min(35, max(5, available_message_len))  # Between 5-35 chars
+        available_message_len = min(45, max(5, available_message_len))  # Between 5-45 chars (increased from 35)
         
         # Get safe message with error handling
         try:
@@ -562,7 +723,7 @@ class GitGraphRenderer:
             message = message[:max(1, len(message) - excess - 3)] + "..."
         
         # Build final result with markup
-        # Format: SHA ref_labels message - author
+        # Format: SHA [ref_labels] message - author
         parts_with_markup = []
         parts_with_markup.append(f"[#89b4fa]{sha_part}[/#89b4fa]")
         if ref_labels:
