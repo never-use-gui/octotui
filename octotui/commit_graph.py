@@ -525,6 +525,10 @@ class GitGraphRenderer:
         Visual effect:
         ├──┴──┴──┘  (rail from commit lane to max forked lane)
         
+        IMPORTANT: This function preserves existing commit symbols (●, ◆, ➤) and
+        merge corners (╮, ╯, ╭) when the commit is both a merge and a fork point.
+        The horizontal rail connects to these symbols via the join function.
+        
         Args:
             columns: List of column strings (already populated)
             commit_lane: The lane where the fork point commit is
@@ -543,29 +547,55 @@ class GitGraphRenderer:
             rail_min = min(commit_lane, min_forked_lane)
             rail_max = max(commit_lane, max_forked_lane)
             
+            # Define symbols that should NOT be overwritten
+            # These are commit dots and merge corners that take visual precedence
+            commit_symbols = (self.COMMIT_DOT, self.MERGE_DOT, self.HEAD_INDICATOR)
+            merge_corners = (self.MERGE_LEFT, self.MERGE_RIGHT, self.CURVE_TOP_LEFT, self.CURVE_TOP_RIGHT)
+            
             for lane, col in enumerate(columns):
                 color = self.get_color_for_lane(lane)
                 
                 if lane == commit_lane:
-                    # Fork point commit - show T-junction going toward forked lanes
-                    # ├ if forking to the right, ┤ if forking to the left
-                    if max_forked_lane > commit_lane:
-                        result.append(f"[{color}]{self.T_RIGHT}[/{color}]")
+                    # Fork point commit - check if we should preserve existing symbol
+                    # If column already has a commit symbol (●, ◆, ➤), keep it!
+                    # The horizontal rail connection will be handled by join function
+                    has_commit_symbol = any(sym in col for sym in commit_symbols)
+                    if has_commit_symbol:
+                        # Preserve the commit dot/merge dot/head indicator
+                        result.append(col)
                     else:
-                        result.append(f"[{color}]{self.T_LEFT}[/{color}]")
+                        # No commit symbol, show T-junction going toward forked lanes
+                        # ├ if forking to the right, ┤ if forking to the left
+                        if max_forked_lane > commit_lane:
+                            result.append(f"[{color}]{self.T_RIGHT}[/{color}]")
+                        else:
+                            result.append(f"[{color}]{self.T_LEFT}[/{color}]")
                 elif lane in forked_lanes:
-                    # This lane forks off - show T-junction going up (┴)
-                    # Use the forked lane's color
-                    forked_color = self.get_color_for_lane(lane)
-                    if lane == rail_max:
-                        # Rightmost forked lane - use corner ┘ (opening upward)
-                        result.append(f"[{forked_color}]{self.CORNER_BOTTOM_RIGHT}[/{forked_color}]")
+                    # This lane forks off - check if we should preserve merge corners
+                    # If column already has a merge corner (╮, ╯, ╭, ╮), keep it!
+                    # The rail continues horizontally via the join function
+                    has_merge_corner = any(corner in col for corner in merge_corners)
+                    if has_merge_corner:
+                        # Preserve the merge corner - rail connects via horizontal line
+                        result.append(col)
                     else:
-                        # Middle forked lane - use T-junction ┴ (opening upward to branches)
-                        result.append(f"[{forked_color}]{self.T_UP}[/{forked_color}]")
+                        # No merge corner, show T-junction going up (┴)
+                        # Use the forked lane's color
+                        forked_color = self.get_color_for_lane(lane)
+                        if lane == rail_max:
+                            # Rightmost forked lane - use corner ┘ (opening upward)
+                            result.append(f"[{forked_color}]{self.CORNER_BOTTOM_RIGHT}[/{forked_color}]")
+                        else:
+                            # Middle forked lane - use T-junction ┴ (opening upward to branches)
+                            result.append(f"[{forked_color}]{self.T_UP}[/{forked_color}]")
                 elif rail_min < lane < rail_max:
                     # Lane is in the rail zone but not a fork point
-                    if lane in active_lanes:
+                    # Check for merge corners here too - they should be preserved
+                    has_merge_corner = any(corner in col for corner in merge_corners)
+                    if has_merge_corner:
+                        # Preserve merge corner in the rail zone
+                        result.append(col)
+                    elif lane in active_lanes:
                         # Cross with active lane - use cross ┼
                         result.append(f"[{color}]{self.CROSS}[/{color}]")
                     else:
