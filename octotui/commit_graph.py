@@ -275,8 +275,8 @@ class GitGraphRenderer:
             
         Note: Includes comprehensive error handling to prevent stylesheet errors
         """
-        # Fixed width for label column
-        LABEL_COLUMN_WIDTH = 15
+        # Fixed width for label column (increased to fit emoji icons)
+        LABEL_COLUMN_WIDTH = 20
         
         try:
             # Validate commit data
@@ -402,7 +402,7 @@ class GitGraphRenderer:
         # Simple renderer has minimal state to reset
         pass
     
-    def _format_label_column(self, commit: CommitNode, width: int = 15) -> str:
+    def _format_label_column(self, commit: CommitNode, width: int = 20) -> str:
         """Format branch labels for a dedicated left column.
         
         Creates a fixed-width left column with branch/tag labels styled
