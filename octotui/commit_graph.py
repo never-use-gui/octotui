@@ -245,7 +245,7 @@ class GitGraphRenderer:
                         columns.append(f"[bold {self.HEAD_COLOR}]{commit_symbol}[/bold {self.HEAD_COLOR}]")
                     else:
                         columns.append(f"[{color}]{commit_symbol}[/{color}]")
-                elif lane in merge_source_lanes:
+                elif lane in merge_source_lanes and is_merge:
                     # This lane is merging into the commit
                     # Show merge indicator pointing toward the commit
                     if lane > commit_lane:
