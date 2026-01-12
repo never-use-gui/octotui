@@ -259,6 +259,29 @@ class TestMultiLaneRendering:
         assert stripped == "red text"
         assert "#" not in stripped
     
+    def test_display_width_handles_emojis(self):
+        """Test that _display_width correctly counts emoji widths."""
+        renderer = GitGraphRenderer()
+        
+        # Regular ASCII text - width equals length
+        assert renderer._display_width("main") == 4
+        assert renderer._display_width("feature") == 7
+        
+        # Emojis are 2 columns wide in terminal
+        assert renderer._display_width("🏠") == 2
+        assert renderer._display_width("🏷") == 2
+        assert renderer._display_width("🌐") == 2
+        
+        # Mixed text with emoji
+        # "🏠main" = 2 (emoji) + 4 (main) = 6 display width
+        assert renderer._display_width("🏠main") == 6
+        
+        # Empty string
+        assert renderer._display_width("") == 0
+        
+        # Multiple emojis
+        assert renderer._display_width("🏠🏷") == 4
+    
     def test_real_repo_rendering(self):
         """Test rendering with real repository commits."""
         repo = git.Repo(".")

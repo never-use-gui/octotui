@@ -147,6 +147,7 @@ class GitGraphRenderer:
         - Commit dot (● or ◆) in the commit's lane
         - Vertical lines (│) for active lanes
         - Merge indicators (└─) for lanes merging into this commit
+        - Branch-out indicators (─╮) when a branch starts from a parent on a different lane
         
         Args:
             commit: The commit node to render
@@ -158,6 +159,7 @@ class GitGraphRenderer:
             "● │ │"  - Commit in lane 0, active lanes 1 and 2
             "│ ◆─┘"  - Merge commit in lane 1, merge from lane 2
             "│ │ ●"  - Commit in lane 2, active lanes 0 and 1
+            "├─● │"  - Branch-out commit in lane 1, branching from lane 0
         """
         try:
             max_lanes = self.get_max_lanes()
@@ -177,14 +179,29 @@ class GitGraphRenderer:
             else:
                 commit_symbol = self.COMMIT_DOT
             
+            # Detect branch-out: when commit's parent is on a different lane
+            # This indicates a branch starting point (not a merge)
+            branch_from_lane = None
+            if not is_merge and self.graph is not None:
+                parent_shas = getattr(commit, 'parent_shas', [])
+                if parent_shas:
+                    first_parent_sha = parent_shas[0]
+                    if first_parent_sha in self.graph.commits:
+                        parent = self.graph.commits[first_parent_sha]
+                        parent_lane = getattr(parent, 'lane', 0)
+                        if parent_lane != commit_lane:
+                            branch_from_lane = parent_lane
+            
             # Build columns for each lane
             columns = []
             
             # Determine which lanes need to be shown
-            # Include: commit lane, active lanes, merge source lanes
+            # Include: commit lane, active lanes, merge source lanes, branch source lane
             lanes_to_show = set([commit_lane])
             lanes_to_show.update(active_lanes)
             lanes_to_show.update(merge_source_lanes)
+            if branch_from_lane is not None:
+                lanes_to_show.add(branch_from_lane)
             
             # Calculate display range (0 to max of all relevant lanes + 1)
             display_max = max(lanes_to_show) + 1 if lanes_to_show else 1
@@ -209,6 +226,16 @@ class GitGraphRenderer:
                     else:
                         # Merge coming from the left - use ┘
                         columns.append(f"[{self.merge_color}]{self.MERGE_RIGHT}[/{self.merge_color}]")
+                elif branch_from_lane is not None and lane == branch_from_lane:
+                    # This is where the branch comes from - show branch-out indicator
+                    # Use ├ (tee) to show branch continuing down and branching right
+                    branch_color = self.get_color_for_lane(commit_lane)  # Use new branch's color
+                    if lane < commit_lane:
+                        # Branch going right from parent lane
+                        columns.append(f"[{branch_color}]{self.CURVE_TOP_LEFT}[/{branch_color}]")
+                    else:
+                        # Branch going left from parent lane (unusual but handle it)
+                        columns.append(f"[{branch_color}]{self.CURVE_TOP_RIGHT}[/{branch_color}]")
                 elif lane in active_lanes:
                     # Active lane - show vertical line
                     columns.append(f"[{color}]{self.VERTICAL_LINE}[/{color}]")
@@ -222,6 +249,11 @@ class GitGraphRenderer:
                 columns = self._add_merge_connections(columns, commit_lane, merge_source_lanes, active_lanes)
                 # Join without spaces in merge zones for continuous horizontal lines
                 return self._join_columns_for_merge(columns, commit_lane, merge_source_lanes)
+            
+            # Add horizontal branch-out connections
+            if branch_from_lane is not None:
+                columns = self._add_branch_out_connections(columns, commit_lane, branch_from_lane, active_lanes)
+                return self._join_columns_for_branch(columns, commit_lane, branch_from_lane)
             
             return " ".join(columns)
             
@@ -340,6 +372,110 @@ class GitGraphRenderer:
                 # Outside merge zone: insert space for normal spacing
                 if current_in_zone and next_in_zone:
                     output_parts.append(f"[{self.merge_color}]{self.HORIZONTAL}[/{self.merge_color}]")
+                else:
+                    output_parts.append(" ")
+        
+        return "".join(output_parts)
+    
+    def _add_branch_out_connections(self, columns: list, commit_lane: int,
+                                     branch_from_lane: int, active_lanes: set) -> list:
+        """Add horizontal branch-out connection lines between parent lane and new branch.
+        
+        This shows where a branch starts by drawing a horizontal line from the
+        parent lane to the new commit's lane.
+        
+        Args:
+            columns: List of column strings (already populated)
+            commit_lane: The lane where the new branch commit is
+            branch_from_lane: The lane of the parent commit (where branch starts from)
+            active_lanes: Currently active lanes
+            
+        Returns:
+            Updated columns list with branch-out connections
+        """
+        try:
+            result = []
+            branch_color = self.get_color_for_lane(commit_lane)
+            
+            for lane, col in enumerate(columns):
+                if lane == commit_lane:
+                    # Keep the commit symbol
+                    result.append(col)
+                elif lane == branch_from_lane:
+                    # Source lane - show branch-out corner
+                    if lane < commit_lane:
+                        # Branching to the right
+                        result.append(f"[{branch_color}]{self.CURVE_TOP_LEFT}[/{branch_color}]")
+                    else:
+                        # Branching to the left (unusual but possible)
+                        result.append(f"[{branch_color}]{self.CURVE_TOP_RIGHT}[/{branch_color}]")
+                elif self._is_between_branch_and_parent(lane, commit_lane, branch_from_lane):
+                    # Lane is between commit and branch source - show horizontal line
+                    if lane in active_lanes:
+                        # Cross with active lane - use T junction
+                        result.append(f"[{branch_color}]{self.BRANCH_DOWN}[/{branch_color}]")
+                    else:
+                        # Just horizontal line
+                        result.append(f"[{branch_color}]{self.HORIZONTAL}[/{branch_color}]")
+                else:
+                    # Not involved in branch-out - keep original
+                    result.append(col)
+            
+            return result
+            
+        except Exception:
+            return columns
+    
+    def _is_between_branch_and_parent(self, lane: int, commit_lane: int, branch_from_lane: int) -> bool:
+        """Check if a lane is between the branch commit and its parent lane.
+        
+        Args:
+            lane: Lane to check
+            commit_lane: The new branch's lane
+            branch_from_lane: The parent's lane
+            
+        Returns:
+            True if lane is strictly between commit and parent
+        """
+        min_lane = min(commit_lane, branch_from_lane)
+        max_lane = max(commit_lane, branch_from_lane)
+        return min_lane < lane < max_lane
+    
+    def _join_columns_for_branch(self, columns: list, commit_lane: int, branch_from_lane: int) -> str:
+        """Join columns with horizontal line characters for branch-out visualization.
+        
+        Similar to _join_columns_for_merge but for branch-out points.
+        
+        Args:
+            columns: List of column strings with Rich markup
+            commit_lane: The lane where the new branch commit is
+            branch_from_lane: The lane of the parent commit
+            
+        Returns:
+            Joined string with horizontal lines in branch zone, spaces elsewhere
+        """
+        if not columns:
+            return ""
+        
+        # Find the extent of the branch zone
+        min_branch_lane = min(commit_lane, branch_from_lane)
+        max_branch_lane = max(commit_lane, branch_from_lane)
+        
+        branch_color = self.get_color_for_lane(commit_lane)
+        output_parts = []
+        
+        for i, col in enumerate(columns):
+            output_parts.append(col)
+            
+            # Determine what separator to add after this column
+            if i < len(columns) - 1:
+                current_in_zone = min_branch_lane <= i <= max_branch_lane
+                next_in_zone = min_branch_lane <= (i + 1) <= max_branch_lane
+                
+                # In branch zone: insert horizontal line character
+                # Outside branch zone: insert space
+                if current_in_zone and next_in_zone:
+                    output_parts.append(f"[{branch_color}]{self.HORIZONTAL}[/{branch_color}]")
                 else:
                     output_parts.append(" ")
         
@@ -589,7 +725,8 @@ class GitGraphRenderer:
             
             for i, (label, display) in enumerate(zip(labels, labels_display)):
                 separator_len = 1 if result_parts else 0  # Space between labels
-                label_len = len(display)
+                # Use _display_width for proper emoji width accounting
+                label_len = self._display_width(display)
                 
                 if current_len + separator_len + label_len <= width - 1:  # -1 for trailing space
                     if result_parts:
@@ -614,7 +751,7 @@ class GitGraphRenderer:
                         else:
                             result_parts.append(f"[#cba6f7]{truncated}[/#cba6f7]")
                         result_display_parts.append(truncated)
-                        current_len = len(truncated)
+                        current_len = self._display_width(truncated)
                     else:
                         result_parts.append(label)
                         result_display_parts.append(display)
@@ -627,7 +764,8 @@ class GitGraphRenderer:
             # Join and pad to fixed width
             result = "".join(result_parts)
             display_result = "".join(result_display_parts)
-            display_len = len(display_result)
+            # Use _display_width for proper emoji width accounting
+            display_len = self._display_width(display_result)
             
             # Pad with spaces to reach fixed width
             padding_needed = width - display_len
@@ -855,6 +993,45 @@ class GitGraphRenderer:
         except Exception:
             # Fallback to basic character count
             return text if text else ''
+    
+    def _display_width(self, text: str) -> int:
+        """Calculate the display width of text, accounting for wide characters.
+        
+        Emojis and other wide characters take 2 columns in terminal display,
+        but Python's len() counts them as 1. This method properly accounts
+        for wide characters to ensure correct column alignment.
+        
+        Args:
+            text: Text to measure (should be plain text without markup)
+            
+        Returns:
+            Display width in terminal columns
+        """
+        if not text:
+            return 0
+        
+        width = 0
+        for char in text:
+            code_point = ord(char)
+            # Emoji ranges that are typically 2 columns wide:
+            # - Miscellaneous Symbols and Pictographs: U+1F300 - U+1F5FF
+            # - Emoticons: U+1F600 - U+1F64F
+            # - Transport and Map Symbols: U+1F680 - U+1F6FF
+            # - Supplemental Symbols and Pictographs: U+1F900 - U+1F9FF
+            # - Symbols and Pictographs Extended-A: U+1FA00 - U+1FAFF
+            if code_point >= 0x1F300 and code_point <= 0x1FAFF:
+                width += 2
+            # Also check for other wide characters using East Asian Width
+            elif code_point >= 0x1100:  # Start of potential wide chars
+                import unicodedata
+                ea_width = unicodedata.east_asian_width(char)
+                if ea_width in ('F', 'W'):  # Fullwidth or Wide
+                    width += 2
+                else:
+                    width += 1
+            else:
+                width += 1
+        return width
     
     def _calculate_commit_depth(self, commit: CommitNode) -> int:
         """Calculate the branch depth level for a commit.
