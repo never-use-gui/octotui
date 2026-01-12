@@ -64,6 +64,7 @@ class GitGraphRenderer:
         self.T_RIGHT = "├"           # T-junction, horizontal goes right (rail start)
         self.CORNER_TOP_RIGHT = "┐"  # Corner for rail end
         self.CORNER_TOP_LEFT = "┌"   # Corner for rail start
+        self.CORNER_BOTTOM_RIGHT = "┘"  # Corner for rail end (opening upward)
         
         # Depth-based colors
         self.depth_colors = [
@@ -522,7 +523,7 @@ class GitGraphRenderer:
         where branches fork off.
         
         Visual effect:
-        ├──┬──┬──┘  (rail from commit lane to max forked lane)
+        ├──┴──┴──┘  (rail from commit lane to max forked lane)
         
         Args:
             columns: List of column strings (already populated)
@@ -557,11 +558,11 @@ class GitGraphRenderer:
                     # Use the forked lane's color
                     forked_color = self.get_color_for_lane(lane)
                     if lane == rail_max:
-                        # Rightmost forked lane - use corner ┐ or ┘
-                        result.append(f"[{forked_color}]{self.CORNER_TOP_RIGHT}[/{forked_color}]")
+                        # Rightmost forked lane - use corner ┘ (opening upward)
+                        result.append(f"[{forked_color}]{self.CORNER_BOTTOM_RIGHT}[/{forked_color}]")
                     else:
-                        # Middle forked lane - use T-junction ┬ (going down to future commits)
-                        result.append(f"[{forked_color}]{self.T_DOWN}[/{forked_color}]")
+                        # Middle forked lane - use T-junction ┴ (opening upward to branches)
+                        result.append(f"[{forked_color}]{self.T_UP}[/{forked_color}]")
                 elif rail_min < lane < rail_max:
                     # Lane is in the rail zone but not a fork point
                     if lane in active_lanes:
