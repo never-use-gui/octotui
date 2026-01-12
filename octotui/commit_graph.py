@@ -5,7 +5,7 @@ This module provides a git log --graph visualization with continuous
 ASCII branch lines and properly aligned commit text.
 """
 
-from typing import Optional, List, Dict, Set, Tuple
+from typing import Optional, Dict
 from textual.app import ComposeResult
 from textual.widget import Widget
 from textual.widgets import Static, Input, Button
@@ -121,7 +121,7 @@ class GitGraphRenderer:
                 safe_sha = getattr(commit, 'short_sha', getattr(commit, 'sha', 'unknown')[:8])[:8]
                 safe_msg = getattr(commit, 'message', 'Error rendering')[:20]
                 return f"[#89b4fa]● │[/#89b4fa] [#89b4fa]{safe_sha}[/#89b4fa] [#cdd6f4]{safe_msg}...[/#cdd6f4]"
-            except:
+            except Exception:
                 return "[#89b4fa]● │[/#89b4fa] [#89b4fa]error[/#89b4fa] [#cdd6f4]render error[/#cdd6f4]"
     
     def _is_safe_markup(self, text: str) -> bool:
@@ -262,9 +262,9 @@ class GitGraphRenderer:
                     result = " ".join(truncated_labels) + "[#6c7086]...[/#6c7086]"
                     display_len = len(self._strip_markup(result))
                 else:
-                    # Even first label is too long, truncate it
-                    result = labels[0][:max_label_width - 3] + "..."
-                    display_len = max_label_width
+                    # Even first label is too long, show simplified placeholder
+                    result = "[dim #6c7086](#...)[/dim #6c7086]"
+                    display_len = len(self._strip_markup(result))
             
             return result, display_len
             
@@ -576,7 +576,7 @@ class CommitGraphLine(Static):
             # Ultimate fallback - create a simple static widget
             try:
                 super().__init__("[#89b4fa]● │[/#89b4fa] [#89b4fa]error[/#89b4fa] [#cdd6f4]display error[/#cdd6f4]", **kwargs)
-            except:
+            except Exception:
                 # If even the fallback fails, create without markup
                 super().__init__("● │ error display error", **kwargs)
             
@@ -724,7 +724,7 @@ class CommitGraphWidget(Widget):
                         safe_sha = getattr(commit, 'short_sha', getattr(commit, 'sha', 'unknown'))[:8]
                         if not safe_sha:
                             safe_sha = 'unknown'
-                    except:
+                    except Exception:
                         safe_sha = 'unknown'
                     
                     # Show error but don't crash
