@@ -305,11 +305,11 @@ class GitGraphRenderer:
     
     def _join_columns_for_merge(self, columns: list, commit_lane: int,
                                  merge_source_lanes: list) -> str:
-        """Join columns with smart spacing for continuous horizontal merge lines.
+        """Join columns with horizontal line characters for continuous merge visualization.
         
-        For merge commits, we want horizontal lines (─) to be continuous without
-        spaces between them. This method joins columns without spaces when both
-        the current and next column are within the "merge zone".
+        For merge commits, we insert actual horizontal line characters (─) between
+        columns in the merge zone to create a visible connection between the commit
+        and its merge sources.
         
         Args:
             columns: List of column strings with Rich markup
@@ -317,7 +317,7 @@ class GitGraphRenderer:
             merge_source_lanes: Lanes that are merging into this commit
             
         Returns:
-            Joined string with appropriate spacing
+            Joined string with horizontal lines in merge zone, spaces elsewhere
         """
         if not columns:
             return ""
@@ -331,13 +331,16 @@ class GitGraphRenderer:
         for i, col in enumerate(columns):
             output_parts.append(col)
             
-            # Add space after this column unless both this and next are in merge zone
+            # Determine what separator to add after this column
             if i < len(columns) - 1:
                 current_in_zone = min_merge_lane <= i <= max_merge_lane
                 next_in_zone = min_merge_lane <= (i + 1) <= max_merge_lane
                 
-                # No space if both are in the merge zone (continuous horizontal)
-                if not (current_in_zone and next_in_zone):
+                # In merge zone: insert horizontal line character for visible connection
+                # Outside merge zone: insert space for normal spacing
+                if current_in_zone and next_in_zone:
+                    output_parts.append(f"[{self.merge_color}]{self.HORIZONTAL}[/{self.merge_color}]")
+                else:
                     output_parts.append(" ")
         
         return "".join(output_parts)
