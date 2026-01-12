@@ -50,3 +50,8 @@ packages = ["octotui"]
 [tool.hatch.build.targets.wheel.shared-data]
 "octotui/style.tcss" = "octotui/style.tcss"
 "octotui/smmono9.tlf" = "octotui/smmono9.tlf"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

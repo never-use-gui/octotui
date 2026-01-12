@@ -5,8 +5,8 @@ the visual position (lane/column) for each commit in the graph, ensuring
 that parallel branches are displayed side-by-side without overlap.
 """
 
-from typing import Dict, List, Set, Optional, Tuple
-from collections import deque, defaultdict
+from typing import Dict, List, Set, Optional
+from collections import defaultdict
 import git
 from octotui.graph_data import (
     CommitGraph, CommitNode, GraphEdge, GitRef, RefType, CommitType
@@ -110,14 +110,14 @@ class GraphLayoutEngine:
             try:
                 head_commit = self.repo.head.commit.hexsha
                 self.graph.head_sha = head_commit
-            except:
+            except (git.GitCommandError, ValueError, TypeError):
                 head_commit = None
             
             # Get current branch
             try:
                 if not self.repo.head.is_detached:
                     self.graph.current_branch = self.repo.active_branch.name
-            except:
+            except (git.GitCommandError, TypeError):
                 pass
             
             # Load local branches
@@ -140,7 +140,7 @@ class GraphLayoutEngine:
                             commit_sha=ref.commit.hexsha,
                         )
                         self.graph.add_ref(git_ref)
-            except:
+            except (git.GitCommandError, ValueError, AttributeError):
                 pass
             
             # Load tags
@@ -152,7 +152,7 @@ class GraphLayoutEngine:
                         commit_sha=tag.commit.hexsha,
                     )
                     self.graph.add_ref(ref)
-            except:
+            except (git.GitCommandError, ValueError, AttributeError):
                 pass
         
         except Exception:
@@ -160,20 +160,202 @@ class GraphLayoutEngine:
             pass
     
     def _calculate_layout(self) -> None:
-        """Calculate simple single-column timeline layout.
+        """Calculate multi-lane graph layout based on branch topology.
         
-        Creates a clean vertical timeline where each commit is in the same column,
-        perfect for the requested dot-and-line visualization.
+        Implements a proper lane assignment algorithm that:
+        - Assigns each branch to its own lane
+        - Main branch typically stays in lane 0
+        - Feature branches get adjacent lanes
+        - Reuses lanes when branches merge
+        - Tracks active lanes at each row for rendering
+        
+        The algorithm processes commits top-to-bottom (topological order):
+        1. For each commit, check if a lane was reserved by a child
+        2. First parent continues the same lane (main line)
+        3. Additional parents (merge sources) get new lanes
+        4. Track active lanes and merge sources for rendering
         """
-        # For simple timeline, all commits go in lane 0 (single column)
         commits = self.graph.get_commits_in_order()
+        if not commits:
+            self.graph.max_lanes = 1
+            return
+        
+        # Maps parent SHA -> list of lanes that will lead to it
+        # When we encounter this parent, we assign it to the first lane
+        # and mark other lanes as merge sources
+        parent_lane_reservations: Dict[str, List[int]] = defaultdict(list)
+        
+        # Currently active lanes (have a continuous line through current row)
+        active_lanes: Set[int] = set()
+        
+        # Try to identify main branch to keep it in lane 0
+        main_branch_head = self._find_main_branch_head()
+        
+        def get_free_lane(preferred: Optional[int] = None) -> int:
+            """Get the lowest available lane number.
+            
+            Args:
+                preferred: Preferred lane to use if available
+            
+            Returns:
+                Available lane number
+            """
+            if preferred is not None and preferred not in active_lanes:
+                return preferred
+            lane = 0
+            while lane in active_lanes:
+                lane += 1
+            return lane
         
         for commit in commits:
-            commit.lane = 0  # All commits in the same column
-            commit.color_index = 0  # Same color for all (single branch)
+            sha = commit.sha
+            
+            # Store active lanes at this row BEFORE processing (for rendering)
+            # This captures the state of lanes as they appear at this row
+            commit.active_lanes = active_lanes.copy()
+            
+            # Check if any previous commit reserved a lane for this commit
+            reserved_lanes = parent_lane_reservations.get(sha, [])
+            
+            if reserved_lanes:
+                # Use the first reserved lane (typically the "main" line)
+                # Sort to prefer lower lane numbers for main line
+                reserved_lanes_sorted = sorted(reserved_lanes)
+                commit.lane = reserved_lanes_sorted[0]
+                
+                # Other reserved lanes are merge source lanes (they converge here)
+                if len(reserved_lanes_sorted) > 1:
+                    commit.merge_source_lanes = reserved_lanes_sorted[1:]
+                    # Release the merge source lanes (they end at this commit)
+                    for lane in reserved_lanes_sorted[1:]:
+                        active_lanes.discard(lane)
+            else:
+                # New branch head - no child reserved a lane for us
+                # Prefer lane 0 for main branch
+                if main_branch_head and sha == main_branch_head:
+                    commit.lane = get_free_lane(preferred=0)
+                else:
+                    commit.lane = get_free_lane()
+                active_lanes.add(commit.lane)
+            
+            # Determine if this commit continues down (has parents in our graph)
+            has_parents_in_graph = any(
+                p_sha in self.graph.commits for p_sha in commit.parent_shas
+            )
+            commit.continues_down = has_parents_in_graph
+            
+            # Reserve lanes for this commit's parents
+            if commit.parent_shas:
+                # First parent continues in the same lane (main development line)
+                first_parent = commit.parent_shas[0]
+                if first_parent in self.graph.commits:
+                    parent_lane_reservations[first_parent].append(commit.lane)
+                
+                # Additional parents (merge sources) get new lanes
+                # Track these lanes ON THE MERGE COMMIT so the renderer can draw merge lines
+                merge_source_lanes_for_commit = []
+                for parent_sha in commit.parent_shas[1:]:
+                    if parent_sha in self.graph.commits:
+                        # Allocate new lane for the merge source branch
+                        merge_lane = get_free_lane()
+                        active_lanes.add(merge_lane)
+                        parent_lane_reservations[parent_sha].append(merge_lane)
+                        merge_source_lanes_for_commit.append(merge_lane)
+                
+                # Store merge source lanes on this commit for rendering
+                if merge_source_lanes_for_commit:
+                    commit.merge_source_lanes = merge_source_lanes_for_commit
+            else:
+                # No parents - this is an initial commit, release its lane
+                active_lanes.discard(commit.lane)
+            
+            # Assign color based on lane for consistent branch coloring
+            commit.color_index = commit.lane % len(self.graph.colors)
         
-        # Set max lanes to 1 for single column
-        self.graph.max_lanes = 1
+        # Calculate max lanes used
+        if commits:
+            self.graph.max_lanes = max(
+                max(c.lane for c in commits) + 1,
+                max((max(c.active_lanes) + 1 if c.active_lanes else 1) for c in commits)
+            )
+        else:
+            self.graph.max_lanes = 1
+        
+        # Step 5: Detect fork points (GitKraken-style grouped branch-out)
+        # A fork point is a commit where multiple children branch to different lanes
+        self._detect_fork_points(commits)
+    
+    def _find_main_branch_head(self) -> Optional[str]:
+        """Find the HEAD commit of the main branch (main or master).
+        
+        Returns:
+            SHA of main branch head, or None if not found
+        """
+        # Look for main or master branch
+        for branch_name in ['main', 'master']:
+            for ref_name, ref in self.graph.refs.items():
+                if ref.ref_type == RefType.BRANCH and ref.short_name() == branch_name:
+                    return ref.commit_sha
+        
+        # Fallback: use current branch if available
+        if self.graph.current_branch:
+            for ref_name, ref in self.graph.refs.items():
+                if ref.ref_type == RefType.BRANCH and ref.short_name() == self.graph.current_branch:
+                    return ref.commit_sha
+        
+        # Last resort: use HEAD
+        return self.graph.head_sha
+    
+    def _detect_fork_points(self, commits: List['CommitNode']) -> None:
+        """Detect fork points for GitKraken-style grouped branch-out rails.
+        
+        A fork point is a commit where multiple children branch off to different lanes.
+        Instead of drawing individual horizontal lines at each branch's first commit,
+        we mark the parent as a fork point and draw ONE shared horizontal rail.
+        
+        This creates the visual effect:
+        │  │  │  │
+        │  │  │  ●  branch 3 (just dots on their lanes)
+        │  │  │  │
+        │  │  ●  │  branch 2
+        │  │  │  │
+        │  ●  │  │  branch 1
+        │  │  │  │
+        ├──┴──┴──┘  (ONE shared horizontal rail at fork point)
+        │
+        
+        Args:
+            commits: List of commits in topological order
+        """
+        for commit in commits:
+            # Initialize fork point attributes
+            commit.is_fork_point = False
+            commit.forked_lanes = []
+            
+            # Get children of this commit
+            child_shas = getattr(commit, 'child_shas', [])
+            if len(child_shas) < 2:
+                # Need at least 2 children to be a fork point
+                continue
+            
+            # Check which children are on different lanes than this commit
+            forked_lanes = set()
+            for child_sha in child_shas:
+                if child_sha in self.graph.commits:
+                    child = self.graph.commits[child_sha]
+                    child_lane = getattr(child, 'lane', 0)
+                    
+                    # Only count as forked if child is on a different lane
+                    # AND this commit is the child's first parent (not a merge)
+                    child_parents = getattr(child, 'parent_shas', [])
+                    if child_parents and child_parents[0] == commit.sha:
+                        if child_lane != commit.lane:
+                            forked_lanes.add(child_lane)
+            
+            # Mark as fork point if we have lanes forking off
+            if forked_lanes:
+                commit.is_fork_point = True
+                commit.forked_lanes = sorted(forked_lanes)
     
     def _build_edges(self) -> None:
         """Build edges between commits based on parent-child relationships."""
@@ -193,95 +375,3 @@ class GraphLayoutEngine:
                     color_index=commit.color_index,
                 )
                 self.graph.add_edge(edge)
-
-
-class GraphRenderer:
-    """Renders the commit graph as a DAG with vertical dotted lines.
-    
-    This renderer creates a clean, minimalist DAG visualization showing
-    parent-child relationships with vertical dotted lines and proper alignment.
-    """
-    
-    # Graph characters for clean timeline visualization
-    VERTICAL_DOTTED = "┊" # ┊ dotted vertical line for parent-child connections
-    CIRCLE = "●"        # ● solid circle representing one commit
-    BLANK = " "         # space for layout
-    
-    def __init__(self, graph: CommitGraph):
-        """Initialize renderer with a graph for clean timeline visualization."""
-        self.graph = graph
-        self.column_spacing = 3  # Clean spacing for single column
-        self._build_timeline_structure()  # Build simple timeline structure
-    
-    def _build_timeline_structure(self) -> None:
-        """Build simple timeline structure for single-branch commit visualization.
-        
-        Creates a clean vertical timeline where each commit is a solid circle
-        connected by dotted lines to show parent-child relationships.
-        """
-        # For clean timeline, we just need to ensure commits are properly ordered
-        # No complex DAG structure needed for single-branch view
-        pass
-    
-    def render_row(self, commit: CommitNode, show_details: bool = True) -> str:
-        """Render a clean timeline row with circle and dotted line.
-        
-        Args:
-            commit: Commit to render
-            show_details: Whether to show commit details (message, author, etc.)
-            
-        Returns:
-            String representation of the timeline row with proper alignment
-        """
-        # Build simple timeline: solid circle + dotted line + details
-        circle = self.CIRCLE
-        dotted_line = self.VERTICAL_DOTTED
-        
-        if not show_details:
-            return f"{circle}"
-        
-        # Build commit details with proper spacing
-        details_part = self._render_commit_timeline_details(commit)
-        
-        # Return timeline row: circle + dotted line + details
-        return f"{circle} {dotted_line} {details_part}"
-    
-    def _render_commit_timeline_details(self, commit: CommitNode) -> str:
-        """Render commit details in timeline format.
-        
-        Shows: SHA, message, author in a clean, aligned format.
-        """
-        # SHA in highlighted color
-        sha_part = f"[#7dcfff]{commit.short_sha}[/#7dcfff]"
-        
-        # Current branch indicator if this is HEAD
-        branch_indicator = ""
-        for ref in commit.refs:
-            if ref.is_current:
-                branch_indicator = f"[bold #9ece6a]({ref.short_name()}*)[/bold #9ece6a] "
-                break
-        
-        # Commit message (truncated if needed)
-        message = commit.short_message(max_length=50)
-        
-        # Author name
-        author_part = f"[dim] - {commit.author}[/dim]"
-        
-        # Combine all parts
-        return f"{sha_part} {branch_indicator}{message}{author_part}"
-    
-
-    
-    def _calculate_graph_width(self) -> int:
-        """Calculate width needed for simple timeline (single column)."""
-        # Simple timeline needs minimal width for single column
-        return 1
-    
-    def _column_x(self, lane: int) -> int:
-        """Get the X position for a given lane/column."""
-        return (lane * self.column_spacing) + 2
-    
-
-    
-
-    
