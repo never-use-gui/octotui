@@ -5,7 +5,7 @@ This module provides a git log --graph visualization with continuous
 ASCII branch lines and properly aligned commit text.
 """
 
-from typing import Optional, List
+from typing import Optional
 from textual.app import ComposeResult
 from textual.widget import Widget
 from textual.widgets import Static, Input, Button
@@ -88,7 +88,7 @@ class GitGraphRenderer:
             # Build graph part with lane-based coloring
             try:
                 graph_part = self._build_lane_graph_part(commit, lane, commit_symbol, lane_color)
-            except Exception as graph_error:
+            except Exception:
                 # Fallback to simple format if graph part fails
                 graph_part = f"[{lane_color}]{commit_symbol} │[/{lane_color}]"
             
@@ -102,7 +102,7 @@ class GitGraphRenderer:
             # Format commit info with lane color for SHA
             try:
                 commit_info = self._format_commit_info(commit, available_width, lane, lane_color)
-            except Exception as info_error:
+            except Exception:
                 # Fallback to simple format if commit info fails
                 safe_sha = getattr(commit, 'short_sha', commit.sha[:8])[:8]
                 commit_info = f"[{lane_color}]{safe_sha}[/{lane_color}] [#cdd6f4]Error formatting[/#cdd6f4]"
@@ -116,14 +116,14 @@ class GitGraphRenderer:
             
             return result
             
-        except Exception as e:
+        except Exception:
             # Ultimate fallback
             try:
                 safe_sha = getattr(commit, 'short_sha', getattr(commit, 'sha', 'unknown')[:8])[:8]
                 safe_msg = getattr(commit, 'message', 'Error rendering')[:20]
                 fallback_color = self.lane_colors[0]
                 return f"[{fallback_color}]● │[/{fallback_color}] [{fallback_color}]{safe_sha}[/{fallback_color}] [#cdd6f4]{safe_msg}...[/#cdd6f4]"
-            except:
+            except Exception:
                 return "[#bb9af7]● │[/#bb9af7] [#bb9af7]error[/#bb9af7] [#cdd6f4]render error[/#cdd6f4]"
     
     def _is_safe_markup(self, text: str) -> bool:
@@ -191,7 +191,7 @@ class GitGraphRenderer:
                 else:
                     return f"[{symbol_color}]{symbol}[/{symbol_color}] [{color}]{self.BRANCH_CHAR}L{min(lane, 9)}[/{color}]"
                     
-        except Exception as e:
+        except Exception:
             # Fallback to simple format
             return f"[{self.lane_colors[0]}]{self.COMMIT_DOT} │[/{self.lane_colors[0]}]"
     
@@ -373,11 +373,11 @@ class CommitGraphLine(Static):
             
             super().__init__(content, **kwargs)
             self.commit = commit
-        except Exception as e:
+        except Exception:
             # Ultimate fallback - create a simple static widget
             try:
                 super().__init__("[#89b4fa]● │[/#89b4fa] [#89b4fa]error[/#89b4fa] [#cdd6f4]display error[/#cdd6f4]", **kwargs)
-            except:
+            except Exception:
                 # If even the fallback fails, create without markup
                 super().__init__("● │ error display error", **kwargs)
             
@@ -512,13 +512,13 @@ class CommitGraphWidget(Widget):
                     content = self.renderer.render_commit_line(commit)
                     line = CommitGraphLine(commit, content)
                     scroll.mount(line)
-                except Exception as line_error:
+                except Exception:
                     # Get safe commit ID for error message
                     try:
                         safe_sha = getattr(commit, 'short_sha', getattr(commit, 'sha', 'unknown'))[:8]
                         if not safe_sha:
                             safe_sha = 'unknown'
-                    except:
+                    except Exception:
                         safe_sha = 'unknown'
                     
                     # Show error but don't crash
