@@ -252,12 +252,19 @@ class GraphLayoutEngine:
                     parent_lane_reservations[first_parent].append(commit.lane)
                 
                 # Additional parents (merge sources) get new lanes
+                # Track these lanes ON THE MERGE COMMIT so the renderer can draw merge lines
+                merge_source_lanes_for_commit = []
                 for parent_sha in commit.parent_shas[1:]:
                     if parent_sha in self.graph.commits:
                         # Allocate new lane for the merge source branch
                         merge_lane = get_free_lane()
                         active_lanes.add(merge_lane)
                         parent_lane_reservations[parent_sha].append(merge_lane)
+                        merge_source_lanes_for_commit.append(merge_lane)
+                
+                # Store merge source lanes on this commit for rendering
+                if merge_source_lanes_for_commit:
+                    commit.merge_source_lanes = merge_source_lanes_for_commit
             else:
                 # No parents - this is an initial commit, release its lane
                 active_lanes.discard(commit.lane)
