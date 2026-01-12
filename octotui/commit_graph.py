@@ -80,6 +80,10 @@ class GitGraphRenderer:
         
         # Special colors
         self.merge_color = "#f38ba8"  # Red for merges
+        
+        # HEAD indicator - VERY VISIBLE!
+        self.HEAD_INDICATOR = "➤"  # Distinctive pointer symbol
+        self.HEAD_COLOR = "#a6e3a1"  # Bright green for maximum visibility
     
     def set_graph(self, graph: 'CommitGraph') -> None:
         """Set the graph for multi-lane rendering.
@@ -112,6 +116,29 @@ class GitGraphRenderer:
             return self.graph.colors[lane % len(self.graph.colors)]
         return self.default_colors[lane % len(self.default_colors)]
     
+    def _is_head_commit(self, commit: 'CommitNode') -> bool:
+        """Check if this commit is the current HEAD.
+        
+        Determines if any ref attached to this commit is marked as current,
+        indicating this is the HEAD commit (where we're currently checked out).
+        
+        Args:
+            commit: The commit to check
+            
+        Returns:
+            True if this commit is HEAD, False otherwise
+        """
+        try:
+            refs = getattr(commit, 'refs', [])
+            if not refs:
+                return False
+            for ref in refs:
+                if getattr(ref, 'is_current', False):
+                    return True
+            return False
+        except Exception:
+            return False
+    
     def _build_graph_columns(self, commit: CommitNode) -> str:
         """Build the graph column visualization for multi-lane rendering.
         
@@ -138,9 +165,17 @@ class GitGraphRenderer:
             active_lanes = getattr(commit, 'active_lanes', set())
             merge_source_lanes = getattr(commit, 'merge_source_lanes', [])
             
-            # Determine commit symbol
+            # Determine commit symbol - HEAD gets special treatment!
             is_merge = commit.is_merge() if hasattr(commit, 'is_merge') else len(getattr(commit, 'parent_shas', [])) > 1
-            commit_symbol = self.MERGE_DOT if is_merge else self.COMMIT_DOT
+            is_head = self._is_head_commit(commit)
+            
+            if is_head:
+                # HEAD commit gets VERY VISIBLE indicator
+                commit_symbol = self.HEAD_INDICATOR
+            elif is_merge:
+                commit_symbol = self.MERGE_DOT
+            else:
+                commit_symbol = self.COMMIT_DOT
             
             # Build columns for each lane
             columns = []
@@ -160,7 +195,11 @@ class GitGraphRenderer:
                 
                 if lane == commit_lane:
                     # This is the commit's lane - show commit symbol
-                    columns.append(f"[{color}]{commit_symbol}[/{color}]")
+                    # HEAD gets bold bright green for maximum visibility!
+                    if is_head:
+                        columns.append(f"[bold {self.HEAD_COLOR}]{commit_symbol}[/bold {self.HEAD_COLOR}]")
+                    else:
+                        columns.append(f"[{color}]{commit_symbol}[/{color}]")
                 elif lane in merge_source_lanes:
                     # This lane is merging into the commit
                     # Show merge indicator pointing toward the commit
@@ -186,8 +225,13 @@ class GitGraphRenderer:
             
         except Exception as e:
             # Fallback to simple single-lane rendering
-            commit_symbol = self.MERGE_DOT if getattr(commit, 'is_merge', lambda: False)() else self.COMMIT_DOT
-            return f"[{self.line_color}]{commit_symbol} {self.VERTICAL_LINE}[/{self.line_color}]"
+            is_head = self._is_head_commit(commit)
+            if is_head:
+                commit_symbol = self.HEAD_INDICATOR
+                return f"[bold {self.HEAD_COLOR}]{commit_symbol} {self.VERTICAL_LINE}[/bold {self.HEAD_COLOR}]"
+            else:
+                commit_symbol = self.MERGE_DOT if getattr(commit, 'is_merge', lambda: False)() else self.COMMIT_DOT
+                return f"[{self.line_color}]{commit_symbol} {self.VERTICAL_LINE}[/{self.line_color}]"
     
     def _add_merge_connections(self, columns: list, commit_lane: int, 
                                 merge_source_lanes: list, active_lanes: set) -> list:
@@ -290,11 +334,21 @@ class GitGraphRenderer:
                 depth = 0  # Default to main line if depth calculation fails
             
             # Determine commit type and corresponding symbol
-            commit_symbol = self.MERGE_DOT if commit.is_merge() else self.COMMIT_DOT
+            # HEAD commits get special very visible indicator!
+            is_head = self._is_head_commit(commit)
+            if is_head:
+                commit_symbol = self.HEAD_INDICATOR
+            elif commit.is_merge():
+                commit_symbol = self.MERGE_DOT
+            else:
+                commit_symbol = self.COMMIT_DOT
             
             # Get color based on depth and type with fallback
+            # HEAD commits get BRIGHT GREEN for maximum visibility!
             try:
-                if commit.is_merge():
+                if is_head:
+                    commit_color = self.HEAD_COLOR
+                elif commit.is_merge():
                     commit_color = self.merge_color
                 else:
                     commit_color = self.depth_colors[min(max(depth, 0), len(self.depth_colors) - 1)]
@@ -390,7 +444,10 @@ class GitGraphRenderer:
             String containing the simple timeline visualization
         """
         # Simple timeline: commit symbol + vertical line
-        if commit.is_merge():
+        # HEAD commits get special visible indicator!
+        if self._is_head_commit(commit):
+            return f"[bold {self.HEAD_COLOR}]{self.HEAD_INDICATOR} {self.VERTICAL_LINE}[/bold {self.HEAD_COLOR}]"
+        elif commit.is_merge():
             return f"{self.MERGE_DOT} {self.VERTICAL_LINE}"
         else:
             return f"{self.COMMIT_DOT} {self.VERTICAL_LINE}"
@@ -881,7 +938,7 @@ class GitGraphRenderer:
             if not color or not color.startswith('#'):
                 color = '#89b4fa'  # Fallback to blue
             
-            if not symbol or symbol not in [self.COMMIT_DOT, self.MERGE_DOT]:
+            if not symbol or symbol not in [self.COMMIT_DOT, self.MERGE_DOT, self.HEAD_INDICATOR]:
                 symbol = self.COMMIT_DOT
             
             depth = max(0, depth)  # Ensure non-negative
