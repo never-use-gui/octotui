@@ -717,7 +717,7 @@ class GitGraphRenderer:
         
         return "".join(output_parts)
     
-    def render_commit_line(self, commit: CommitNode, max_width: int = 80) -> str:
+    def render_commit_line(self, commit: CommitNode, max_width: int = 200) -> str:
         """Render a clean single-line commit visualization with branch labels in left column.
         
         Format: [label_column] [graph] [sha] [message] [author]
@@ -728,7 +728,7 @@ class GitGraphRenderer:
         
         Args:
             commit: The commit to render
-            max_width: Maximum width for the line (default 80 for better containment)
+            max_width: Maximum width for the line (default 200 to fill available space)
             
         Returns:
             Formatted string with label column, graph, and commit info
