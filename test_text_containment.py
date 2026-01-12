@@ -233,6 +233,129 @@ class TestMultiLaneRendering:
         # Should have merge indicator in lane 1
         assert renderer.MERGE_LEFT in stripped or renderer.MERGE_DOT in stripped
     
+    def test_branch_out_shows_horizontal_lines(self, graph_with_lanes):
+        """Test that branch-out commits show horizontal lines from parent lane.
+        
+        When a commit is the START of a new branch (its parent is on a different lane),
+        we should show a horizontal line connecting back to the parent's lane.
+        
+        Visual target:
+        ╭─●  (curve showing branch-out from main line to new branch)
+        │ │
+        """
+        # Create a parent commit on lane 0
+        parent_commit = CommitNode(
+            sha="parent123def456",
+            short_sha="parent1",
+            message="Parent on main",
+            full_message="Parent on main",
+            author="Test Author",
+            author_email="test@example.com",
+            committer="Test Author",
+            date=datetime.now(),
+            parent_shas=[],
+            lane=0,
+            active_lanes=set(),
+            commit_type=CommitType.NORMAL,
+        )
+        
+        # Create a branch-out commit on lane 1 with parent on lane 0
+        branch_commit = CommitNode(
+            sha="branch123def456",
+            short_sha="branch1",
+            message="Feature branch start",
+            full_message="Feature branch start",
+            author="Test Author",
+            author_email="test@example.com",
+            committer="Test Author",
+            date=datetime.now(),
+            parent_shas=["parent123def456"],  # Parent is on lane 0
+            lane=1,  # This commit is on lane 1
+            active_lanes={0},  # Main lane is still active
+            commit_type=CommitType.NORMAL,
+        )
+        
+        # Add commits to graph
+        graph_with_lanes.commits = {
+            "parent123def456": parent_commit,
+            "branch123def456": branch_commit,
+        }
+        
+        renderer = GitGraphRenderer(graph=graph_with_lanes)
+        columns = renderer._build_graph_columns(branch_commit)
+        stripped = renderer._strip_markup(columns)
+        
+        # Should have:
+        # 1. A branch-out curve character (╭) at the parent lane (lane 0)
+        # 2. Horizontal line (─) between lanes if there were intermediate lanes
+        # 3. The commit dot (●) in lane 1
+        assert renderer.COMMIT_DOT in stripped, f"Expected commit dot, got: {stripped}"
+        # Should have the curve character for branch-out from lane 0
+        assert renderer.CURVE_TOP_LEFT in stripped, f"Expected branch-out curve ╭, got: {stripped}"
+    
+    def test_branch_out_with_intermediate_lanes(self, graph_with_lanes):
+        """Test branch-out with lanes in between shows horizontal connections.
+        
+        When branching from lane 0 to lane 2, there should be horizontal lines
+        crossing lane 1.
+        
+        Visual target:
+        ╭─┬─●  (curve, horizontal, branch-down, horizontal, commit)
+        │ │ │
+        """
+        # Create a parent commit on lane 0
+        parent_commit = CommitNode(
+            sha="parent123def456",
+            short_sha="parent1",
+            message="Parent on main",
+            full_message="Parent on main",
+            author="Test Author",
+            author_email="test@example.com",
+            committer="Test Author",
+            date=datetime.now(),
+            parent_shas=[],
+            lane=0,
+            active_lanes=set(),
+            commit_type=CommitType.NORMAL,
+        )
+        
+        # Create a branch-out commit on lane 2 with parent on lane 0
+        branch_commit = CommitNode(
+            sha="branch123def456",
+            short_sha="branch1",
+            message="Feature branch start",
+            full_message="Feature branch start",
+            author="Test Author",
+            author_email="test@example.com",
+            committer="Test Author",
+            date=datetime.now(),
+            parent_shas=["parent123def456"],  # Parent is on lane 0
+            lane=2,  # This commit is on lane 2
+            active_lanes={0, 1},  # Lanes 0 and 1 are active
+            commit_type=CommitType.NORMAL,
+        )
+        
+        # Add commits to graph
+        graph_with_lanes.commits = {
+            "parent123def456": parent_commit,
+            "branch123def456": branch_commit,
+        }
+        graph_with_lanes.max_lanes = 3
+        
+        renderer = GitGraphRenderer(graph=graph_with_lanes)
+        columns = renderer._build_graph_columns(branch_commit)
+        stripped = renderer._strip_markup(columns)
+        
+        # Should have:
+        # 1. Branch-out curve (╭) at lane 0
+        # 2. Branch-down junction (┬) at lane 1 (crossing active lane)
+        # 3. Commit dot (●) at lane 2
+        # 4. Horizontal lines (─) connecting them
+        assert renderer.COMMIT_DOT in stripped, f"Expected commit dot, got: {stripped}"
+        assert renderer.CURVE_TOP_LEFT in stripped, f"Expected branch-out curve ╭, got: {stripped}"
+        assert renderer.BRANCH_DOWN in stripped, f"Expected branch-down junction ┬, got: {stripped}"
+        assert renderer.HORIZONTAL in stripped, f"Expected horizontal line ─, got: {stripped}"
+    
     def test_render_commit_line_contains_sha(self, simple_commit):
         """Test that rendered line contains commit SHA."""
         renderer = GitGraphRenderer()
