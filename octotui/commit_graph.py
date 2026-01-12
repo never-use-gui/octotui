@@ -416,10 +416,10 @@ class GitGraphRenderer:
             Fixed-width string with styled labels, padded/truncated to fit
             
         Styling:
-            - Current branch: Green bold with * → main*
-            - Local branches: Cyan → feature/foo
-            - Tags: Yellow → v1.0.0
-            - Remote branches: Dim gray → origin/main
+            - Current branch: Green bold with house icon and * → ⌂ main*
+            - Local branches: Cyan with house icon → ⌂ feature/foo
+            - Tags: Yellow with tag icon → 🏷 v1.0.0
+            - Remote branches: Dim gray with cloud icon → ☁ origin/main
         """
         from octotui.graph_data import RefType
         
@@ -451,24 +451,25 @@ class GitGraphRenderer:
                 is_current = getattr(ref, 'is_current', False)
                 
                 # Style based on ref type (no parentheses - clean badge style)
+                # Icons: ⌂ = local branch, ☁ = remote branch, 🏷 = tag
                 if is_current:
-                    # Current branch: Green bold with asterisk
-                    display_name = f"{ref_name}*"
+                    # Current branch: Green bold with house icon and asterisk
+                    display_name = f"⌂ {ref_name}*"
                     labels.append(f"[bold #a6e3a1]{display_name}[/bold #a6e3a1]")
                     labels_display.append(display_name)
                 elif ref.ref_type == RefType.TAG:
-                    # Tags: Yellow
-                    display_name = f"🏷{ref_name}"
+                    # Tags: Yellow with tag icon
+                    display_name = f"🏷 {ref_name}"
                     labels.append(f"[#f9e2af]{display_name}[/#f9e2af]")
                     labels_display.append(display_name)
                 elif ref.ref_type == RefType.REMOTE_BRANCH:
-                    # Remote branches: Dim gray
-                    display_name = ref_name
+                    # Remote branches: Dim gray with cloud icon
+                    display_name = f"☁ {ref_name}"
                     labels.append(f"[dim #6c7086]{display_name}[/dim #6c7086]")
                     labels_display.append(display_name)
                 elif ref.ref_type == RefType.BRANCH:
-                    # Local branches: Cyan
-                    display_name = ref_name
+                    # Local branches: Cyan with house icon
+                    display_name = f"⌂ {ref_name}"
                     labels.append(f"[#7dcfff]{display_name}[/#7dcfff]")
                     labels_display.append(display_name)
                 else:
