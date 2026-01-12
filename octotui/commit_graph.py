@@ -46,8 +46,8 @@ class GitGraphRenderer:
         self.SPACE = " "             # Space character
         
         # Multi-lane merge visualization characters (curved for smoother look)
-        self.MERGE_LEFT = "╰"        # Curved merge line coming from right
-        self.MERGE_RIGHT = "╯"       # Curved merge line coming from left
+        self.MERGE_LEFT = "╯"        # Curved merge line coming from right (vertical on right connects up)
+        self.MERGE_RIGHT = "╰"       # Curved merge line coming from left (vertical on left connects up)
         self.CURVE_TOP_LEFT = "╭"    # Curved top-left (branch start)
         self.CURVE_TOP_RIGHT = "╮"   # Curved top-right (branch start)
         self.HORIZONTAL = "─"        # Horizontal merge line
