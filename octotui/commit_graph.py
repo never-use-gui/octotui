@@ -18,111 +18,206 @@ from octotui.graph_layout import GraphLayoutEngine
 
 
 class GitGraphRenderer:
-    """Render clean single-line commit graph with branch depth indicators."""
+    """Render multi-lane commit graph with continuous branch lines.
     
-    def __init__(self):
-        # Depth and hierarchy tracking
-        self.commit_depths = {}  # sha -> depth level
-        self.parent_depths = {}  # sha -> parent depth for calculations
+    This renderer creates a GitKraken-style visualization with:
+    - Multiple lanes for parallel branches
+    - Continuous vertical lines for each active lane
+    - Commit dots positioned in their assigned lane
+    - Unicode box-drawing characters for clean visualization
+    """
+    
+    def __init__(self, graph: 'CommitGraph' = None):
+        """Initialize the renderer.
         
-        # Single-line with depth notation
-        self.line_color = "#89b4fa"  # Blue for the main timeline
+        Args:
+            graph: CommitGraph instance for max_lanes and color palette.
+                   Can be set later via set_graph().
+        """
+        self.graph = graph
         
-        # Graph characters for clean single-line visualization with depth
-        self.VERTICAL_LINE = "│"     # Clean vertical line
-        self.COMMIT_DOT = "●"        # Solid circle for commits
-        self.MERGE_DOT = "◆"         # Diamond for merge commits
-        self.BRANCH_CHAR = "├─"     # Branch indicator
-        self.MERGE_CHAR = "└─"      # Merge indicator
-        self.MAIN_LINE = "──"        # Main timeline indicator
-        self.SPACE = " "             # Space character
+        # Lane configuration
+        self.LANE_WIDTH = 2  # Characters per lane
         
-        # Depth-based colors
-        self.depth_colors = [
-            "#89b4fa",  # L0: Blue (main)
-            "#a6e3a1",  # L1: Green (first branch level)
-            "#f9e2af",  # L2: Yellow (second branch level)
-            "#cba6f7",  # L3: Purple (third branch level)
-            "#94e2d5",  # L4+: Cyan (deeper levels)
+        # Unicode box-drawing characters for clean visualization
+        self.VERTICAL_LINE = "│"     # Continuing branch line
+        self.COMMIT_DOT = "●"        # Normal commit dot
+        self.MERGE_DOT = "◆"         # Merge commit dot
+        self.BRANCH_RIGHT = "├"      # Branch going right
+        self.MERGE_LEFT = "└"        # Merge coming from left
+        self.HORIZONTAL = "─"        # Horizontal line
+        self.CROSS = "┼"             # Crossing lines
+        self.MERGE_DOWN = "┬"        # Merge line going down
+        self.SPACE = " "             # Empty space
+        
+        # Default color palette (used if no graph provided)
+        self.default_colors = [
+            "#bb9af7",  # Purple
+            "#9ece6a",  # Green
+            "#7dcfff",  # Blue
+            "#f7768e",  # Red
+            "#ff9e64",  # Orange
+            "#e0af68",  # Yellow
+            "#73daca",  # Cyan
+            "#c0caf5",  # Light blue
         ]
         
         # Special colors
-        self.merge_color = "#f38ba8"  # Red for merges
+        self.merge_color = "#f38ba8"  # Red accent for merges
+        
+        # Legacy compatibility
+        self.commit_depths = {}
+        self.parent_depths = {}
+        self.commits_data = {}
+    
+    def set_graph(self, graph: 'CommitGraph') -> None:
+        """Set the commit graph for layout context.
+        
+        Args:
+            graph: CommitGraph instance with layout information
+        """
+        self.graph = graph
+    
+    def get_color_for_lane(self, lane: int) -> str:
+        """Get the color for a specific lane.
+        
+        Args:
+            lane: Lane index (0-based)
+            
+        Returns:
+            Hex color string for the lane
+        """
+        if self.graph and hasattr(self.graph, 'colors'):
+            return self.graph.colors[lane % len(self.graph.colors)]
+        return self.default_colors[lane % len(self.default_colors)]
+    
+    def get_max_lanes(self) -> int:
+        """Get the maximum number of lanes in the graph.
+        
+        Returns:
+            Maximum lane count, minimum 1
+        """
+        if self.graph and hasattr(self.graph, 'max_lanes'):
+            return max(1, self.graph.max_lanes)
+        return 1
+    
+    def _build_graph_columns(self, commit: CommitNode) -> str:
+        """Build the multi-lane graph visualization for a commit.
+        
+        Creates a visual representation where:
+        - Each lane is LANE_WIDTH characters wide
+        - The commit dot appears in the commit's assigned lane
+        - Vertical lines appear in all other active lanes
+        - Merge source lanes show merge indicators
+        
+        Args:
+            commit: The CommitNode to render
+            
+        Returns:
+            Formatted string with Rich markup for the graph columns
+            
+        Example output for 3 lanes with commit in lane 1:
+            │ ● │  (lane 0 has line, lane 1 has commit, lane 2 has line)
+        """
+        max_lanes = self.get_max_lanes()
+        commit_lane = getattr(commit, 'lane', 0)
+        active_lanes = getattr(commit, 'active_lanes', set())
+        merge_source_lanes = getattr(commit, 'merge_source_lanes', [])
+        
+        # Determine commit symbol
+        is_merge = commit.is_merge()
+        commit_symbol = self.MERGE_DOT if is_merge else self.COMMIT_DOT
+        
+        # Build columns for each lane
+        columns = []
+        
+        for lane in range(max_lanes):
+            lane_color = self.get_color_for_lane(lane)
+            
+            if lane == commit_lane:
+                # This is the commit's lane - show the commit dot
+                # Use merge color accent for merge commits
+                if is_merge:
+                    columns.append(f"[{self.merge_color}]{commit_symbol}[/{self.merge_color}]")
+                else:
+                    columns.append(f"[{lane_color}]{commit_symbol}[/{lane_color}]")
+            elif lane in merge_source_lanes:
+                # This lane is merging into the commit
+                # Show a merge indicator that curves toward the commit lane
+                if lane < commit_lane:
+                    # Merge from left - line ends here
+                    columns.append(f"[{lane_color}]{self.MERGE_LEFT}[/{lane_color}]")
+                else:
+                    # Merge from right - line ends here
+                    columns.append(f"[{lane_color}]{self.MERGE_LEFT}[/{lane_color}]")
+            elif lane in active_lanes:
+                # Active lane continues through this row
+                columns.append(f"[{lane_color}]{self.VERTICAL_LINE}[/{lane_color}]")
+            else:
+                # Empty lane
+                columns.append(self.SPACE)
+        
+        # Join columns with spacing for readability
+        return self.SPACE.join(columns)
     
     def render_commit_line(self, commit: CommitNode, max_width: int = 80) -> str:
-        """Render a clean single-line commit visualization with branch depth indicators.
+        """Render a commit with multi-lane graph visualization.
         
         Args:
             commit: The commit to render
-            max_width: Maximum width for the line (default 80 for better containment)
+            max_width: Maximum width for the entire line (default 80)
             
         Returns:
-            Formatted string with clean timeline and depth visualization
-            
-        Note: Includes comprehensive error handling to prevent stylesheet errors
+            Formatted string with multi-lane graph and commit info
         """
         try:
             # Validate commit data
             if not commit or not hasattr(commit, 'sha'):
-                return "[error] Invalid commit data"
+                return "[#f38ba8]●[/#f38ba8] [#89b4fa]error[/#89b4fa] [#cdd6f4]Invalid commit data[/#cdd6f4]"
             
-            # Calculate branch depth for this commit with error handling
+            # Build the graph columns (multi-lane visualization)
             try:
-                depth = self._calculate_commit_depth(commit)
-            except Exception as depth_error:
-                depth = 0  # Default to main line if depth calculation fails
-            
-            # Determine commit type and corresponding symbol
-            commit_symbol = self.MERGE_DOT if commit.is_merge() else self.COMMIT_DOT
-            
-            # Get color based on depth and type with fallback
-            try:
-                if commit.is_merge():
-                    commit_color = self.merge_color
-                else:
-                    commit_color = self.depth_colors[min(max(depth, 0), len(self.depth_colors) - 1)]
-            except (IndexError, TypeError):
-                commit_color = self.depth_colors[0]  # Fallback to blue
-            
-            # Build graph part with depth notation and validation
-            try:
-                graph_part = self._build_depth_graph_part(commit, depth, commit_symbol, commit_color)
-            except Exception as graph_error:
-                # Fallback to simple format if graph part fails
-                graph_part = f"[#89b4fa]{commit_symbol} │[/#89b4fa]"
+                graph_part = self._build_graph_columns(commit)
+            except Exception:
+                # Fallback to simple single-lane format
+                symbol = self.MERGE_DOT if commit.is_merge() else self.COMMIT_DOT
+                graph_part = f"[#89b4fa]{symbol}[/#89b4fa]"
             
             # Calculate available width for commit info
             try:
-                graph_part_display_len = len(self._strip_markup(graph_part))
-                available_width = max(20, max_width - graph_part_display_len)  # Minimum 20 chars
+                graph_display_len = len(self._strip_markup(graph_part))
+                # Account for space between graph and info
+                available_width = max(20, max_width - graph_display_len - 2)
             except Exception:
-                available_width = 60  # Safe fallback
+                available_width = 50
             
-            # Format commit info with error handling
+            # Format commit info
             try:
-                commit_info = self._format_commit_info(commit, available_width, depth)
-            except Exception as info_error:
-                # Fallback to simple format if commit info fails
-                safe_sha = getattr(commit, 'short_sha', commit.sha[:8])[:8]
+                commit_info = self._format_commit_info(commit, available_width)
+            except Exception:
+                safe_sha = getattr(commit, 'short_sha', commit.sha[:8] if commit.sha else 'unknown')[:8]
                 commit_info = f"[#89b4fa]{safe_sha}[/#89b4fa] [#cdd6f4]Error formatting[/#cdd6f4]"
             
-            # Final result with validation
-            result = f"{graph_part} {commit_info}"
+            # Combine graph and commit info
+            result = f"{graph_part}  {commit_info}"
             
-            # Validate result doesn't contain problematic characters
+            # Validate markup
             if not self._is_safe_markup(result):
-                return f"[#89b4fa]{commit_symbol} │[/#89b4fa] [#89b4fa]{commit.short_sha[:8]}[/#89b4fa] [#cdd6f4]{commit.message[:20]}...[/#cdd6f4]"
+                symbol = self.MERGE_DOT if commit.is_merge() else self.COMMIT_DOT
+                safe_sha = commit.short_sha[:8] if hasattr(commit, 'short_sha') else 'unknown'
+                safe_msg = commit.message[:20] if hasattr(commit, 'message') else 'Error'
+                return f"[#89b4fa]{symbol}[/#89b4fa]  [#89b4fa]{safe_sha}[/#89b4fa] [#cdd6f4]{safe_msg}...[/#cdd6f4]"
             
             return result
             
-        except Exception as e:
+        except Exception:
             # Ultimate fallback
             try:
-                safe_sha = getattr(commit, 'short_sha', getattr(commit, 'sha', 'unknown')[:8])[:8]
-                safe_msg = getattr(commit, 'message', 'Error rendering')[:20]
-                return f"[#89b4fa]● │[/#89b4fa] [#89b4fa]{safe_sha}[/#89b4fa] [#cdd6f4]{safe_msg}...[/#cdd6f4]"
+                safe_sha = getattr(commit, 'short_sha', 'unknown')[:8]
+                safe_msg = getattr(commit, 'message', 'Error')[:20]
+                return f"[#89b4fa]●[/#89b4fa]  [#89b4fa]{safe_sha}[/#89b4fa] [#cdd6f4]{safe_msg}...[/#cdd6f4]"
             except:
-                return "[#89b4fa]● │[/#89b4fa] [#89b4fa]error[/#89b4fa] [#cdd6f4]render error[/#cdd6f4]"
+                return "[#89b4fa]●[/#89b4fa]  [#89b4fa]error[/#89b4fa] [#cdd6f4]render error[/#cdd6f4]"
     
     def _is_safe_markup(self, text: str) -> bool:
         """Check if text contains safe Textual markup.
@@ -151,20 +246,7 @@ class GitGraphRenderer:
         
         return True
     
-    def _build_simple_timeline(self, commit: CommitNode) -> str:
-        """Build a simple single-line timeline visualization.
-        
-        Args:
-            commit: The commit being rendered
-            
-        Returns:
-            String containing the simple timeline visualization
-        """
-        # Simple timeline: commit symbol + vertical line
-        if commit.is_merge():
-            return f"{self.MERGE_DOT} {self.VERTICAL_LINE}"
-        else:
-            return f"{self.COMMIT_DOT} {self.VERTICAL_LINE}"
+
     
 
     
@@ -414,51 +496,7 @@ class GitGraphRenderer:
         for commit in commits.values():
             self._calculate_commit_depth(commit)
     
-    def _build_depth_graph_part(self, commit: CommitNode, depth: int, symbol: str, color: str) -> str:
-        """Build the graph part with depth notation.
-        
-        Args:
-            commit: Commit being rendered
-            depth: Branch depth level (validated)
-            symbol: Commit symbol (● or ◆)
-            color: Color for this commit (validated)
-            
-        Returns:
-            Formatted graph part with depth indication
-        """
-        try:
-            # Validate inputs
-            if not color or not color.startswith('#'):
-                color = '#89b4fa'  # Fallback to blue
-            
-            if not symbol or symbol not in [self.COMMIT_DOT, self.MERGE_DOT]:
-                symbol = self.COMMIT_DOT
-            
-            depth = max(0, depth)  # Ensure non-negative
-            
-            if depth == 0:
-                # Main line - simple clean format
-                return f"[{color}]{symbol} {self.VERTICAL_LINE}[/{color}]"
-            
-            elif depth == 1:
-                # First level branch - show branch indicator
-                if commit and commit.is_merge():
-                    return f"[{color}]{symbol} {self.MERGE_CHAR}L1[/{color}]"
-                else:
-                    return f"[{color}]{symbol} {self.BRANCH_CHAR}L1[/{color}]"
-            
-            else:
-                # Deeper levels - show with depth notation (limit to L9 for display)
-                display_depth = min(depth, 9)
-                depth_str = f"L{display_depth}"
-                if commit and commit.is_merge():
-                    return f"[{color}]{symbol} {self.MERGE_CHAR}{depth_str}[/{color}]"
-                else:
-                    return f"[{color}]{symbol} {self.BRANCH_CHAR}{depth_str}[/{color}]"
-                    
-        except Exception as e:
-            # Fallback to simple format
-            return f"[#89b4fa]{self.COMMIT_DOT} │[/#89b4fa]"
+
     
 
 
@@ -587,8 +625,8 @@ class CommitGraphWidget(Widget):
             layout_engine = GraphLayoutEngine(self.repo)
             self.graph = layout_engine.build_graph(max_commits=self.max_commits)
             
-            # Initialize fresh renderer
-            self.renderer = GitGraphRenderer()
+            # Initialize renderer with graph context for multi-lane rendering
+            self.renderer = GitGraphRenderer(graph=self.graph)
             
             # Render the graph
             self._render_graph()
@@ -620,14 +658,14 @@ class CommitGraphWidget(Widget):
                 scroll.mount(Static("No commits match the filter", classes="info"))
                 return
             
-            # Create fresh renderer for each render
-            self.renderer = GitGraphRenderer()
+            # Create fresh renderer with graph context for multi-lane rendering
+            self.renderer = GitGraphRenderer(graph=self.graph)
             
-            # Set up depth calculations if we have graph data
+            # Also set up legacy depth calculations for backwards compatibility
             try:
                 if hasattr(self.graph, 'commits') and self.graph.commits:
                     self.renderer.set_depth_from_graph_data(self.graph.commits)
-            except Exception as depth_error:
+            except Exception:
                 # Continue without depth calculations if it fails
                 pass
             
