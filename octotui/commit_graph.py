@@ -499,7 +499,7 @@ class GitGraphRenderer:
             
         Note: Includes comprehensive error handling to prevent stylesheet errors
         """
-        # Fixed width for label column (increased to fit emoji icons)
+        # Fixed width for label column (ASCII markers for consistent alignment)
         LABEL_COLUMN_WIDTH = 20
         
         try:
@@ -647,16 +647,16 @@ class GitGraphRenderer:
         
         Args:
             commit: Commit to format refs for
-            width: Fixed width for the label column (default 15 chars)
+            width: Fixed width for the label column (default 20 chars)
             
         Returns:
             Fixed-width string with styled labels, padded/truncated to fit
             
-        Styling:
-            - Current branch: Green bold with house emoji and * → 🏠main*
-            - Local branches: Cyan with house emoji → 🏠feature/foo
-            - Tags: Yellow with tag icon → 🏷 v1.0.0
-            - Remote branches: Dim gray with globe emoji → 🌐origin/main
+        Styling (ASCII-only for consistent alignment):
+            - Current branch: Green bold with asterisk → *main
+            - Local branches: Cyan → feature/foo
+            - Tags: Yellow with hash → #v1.0.0
+            - Remote branches: Dim gray → origin/main
         """
         from octotui.graph_data import RefType
         
@@ -688,25 +688,25 @@ class GitGraphRenderer:
                 is_current = getattr(ref, 'is_current', False)
                 
                 # Style based on ref type (no parentheses - clean badge style)
-                # Icons: 🏠 = local branch, 🌐 = remote branch, 🏷 = tag
+                # ASCII markers: * = current, # = tag (remotes/locals use name only)
                 if is_current:
-                    # Current branch: Green bold with house emoji and asterisk
-                    display_name = f"🏠{ref_name}*"
+                    # Current branch: Green bold with asterisk prefix
+                    display_name = f"*{ref_name}"
                     labels.append(f"[bold #a6e3a1]{display_name}[/bold #a6e3a1]")
                     labels_display.append(display_name)
                 elif ref.ref_type == RefType.TAG:
-                    # Tags: Yellow with tag icon
-                    display_name = f"🏷 {ref_name}"
+                    # Tags: Yellow with hash prefix
+                    display_name = f"#{ref_name}"
                     labels.append(f"[#f9e2af]{display_name}[/#f9e2af]")
                     labels_display.append(display_name)
                 elif ref.ref_type == RefType.REMOTE_BRANCH:
-                    # Remote branches: Dim gray with globe emoji
-                    display_name = f"🌐{ref_name}"
+                    # Remote branches: Dim gray (already has origin/ prefix)
+                    display_name = ref_name
                     labels.append(f"[dim #6c7086]{display_name}[/dim #6c7086]")
                     labels_display.append(display_name)
                 elif ref.ref_type == RefType.BRANCH:
-                    # Local branches: Cyan with house emoji
-                    display_name = f"🏠{ref_name}"
+                    # Local branches: Cyan (no prefix needed)
+                    display_name = ref_name
                     labels.append(f"[#7dcfff]{display_name}[/#7dcfff]")
                     labels_display.append(display_name)
                 else:
@@ -725,8 +725,8 @@ class GitGraphRenderer:
             
             for i, (label, display) in enumerate(zip(labels, labels_display)):
                 separator_len = 1 if result_parts else 0  # Space between labels
-                # Use _display_width for proper emoji width accounting
-                label_len = self._display_width(display)
+                # Calculate display width (ASCII chars = 1 column each)
+                label_len = len(display)
                 
                 if current_len + separator_len + label_len <= width - 1:  # -1 for trailing space
                     if result_parts:
@@ -751,7 +751,7 @@ class GitGraphRenderer:
                         else:
                             result_parts.append(f"[#cba6f7]{truncated}[/#cba6f7]")
                         result_display_parts.append(truncated)
-                        current_len = self._display_width(truncated)
+                        current_len = len(truncated)
                     else:
                         result_parts.append(label)
                         result_display_parts.append(display)
@@ -764,8 +764,8 @@ class GitGraphRenderer:
             # Join and pad to fixed width
             result = "".join(result_parts)
             display_result = "".join(result_display_parts)
-            # Use _display_width for proper emoji width accounting
-            display_len = self._display_width(display_result)
+            # Calculate display width (ASCII = string length)
+            display_len = len(display_result)
             
             # Pad with spaces to reach fixed width
             padding_needed = width - display_len
@@ -794,7 +794,7 @@ class GitGraphRenderer:
         Styling:
             - Current branch: Green bold with * → (main*)
             - Local branches: Cyan → (feature/foo)
-            - Tags: Yellow with 🏷️ → (🏷️ v1.0.0)
+            - Tags: Yellow with # → (#v1.0.0)
             - Remote branches: Dim gray → (origin/main)
         """
         from octotui.graph_data import RefType
@@ -833,8 +833,8 @@ class GitGraphRenderer:
                     # Current branch: Green bold with asterisk
                     labels.append(f"[bold #a6e3a1]({ref_name}*)[/bold #a6e3a1]")
                 elif ref.ref_type == RefType.TAG:
-                    # Tags: Yellow with tag emoji
-                    labels.append(f"[#f9e2af](🏷️ {ref_name})[/#f9e2af]")
+                    # Tags: Yellow with hash prefix
+                    labels.append(f"[#f9e2af](#{ref_name})[/#f9e2af]")
                 elif ref.ref_type == RefType.REMOTE_BRANCH:
                     # Remote branches: Dim gray
                     labels.append(f"[dim #6c7086]({ref_name})[/dim #6c7086]")
