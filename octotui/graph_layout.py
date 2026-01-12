@@ -280,6 +280,10 @@ class GraphLayoutEngine:
             )
         else:
             self.graph.max_lanes = 1
+        
+        # Step 5: Detect fork points (GitKraken-style grouped branch-out)
+        # A fork point is a commit where multiple children branch to different lanes
+        self._detect_fork_points(commits)
     
     def _find_main_branch_head(self) -> Optional[str]:
         """Find the HEAD commit of the main branch (main or master).
@@ -301,6 +305,57 @@ class GraphLayoutEngine:
         
         # Last resort: use HEAD
         return self.graph.head_sha
+    
+    def _detect_fork_points(self, commits: List['CommitNode']) -> None:
+        """Detect fork points for GitKraken-style grouped branch-out rails.
+        
+        A fork point is a commit where multiple children branch off to different lanes.
+        Instead of drawing individual horizontal lines at each branch's first commit,
+        we mark the parent as a fork point and draw ONE shared horizontal rail.
+        
+        This creates the visual effect:
+        │  │  │  │
+        │  │  │  ●  branch 3 (just dots on their lanes)
+        │  │  │  │
+        │  │  ●  │  branch 2
+        │  │  │  │
+        │  ●  │  │  branch 1
+        │  │  │  │
+        ├──┴──┴──┘  (ONE shared horizontal rail at fork point)
+        │
+        
+        Args:
+            commits: List of commits in topological order
+        """
+        for commit in commits:
+            # Initialize fork point attributes
+            commit.is_fork_point = False
+            commit.forked_lanes = []
+            
+            # Get children of this commit
+            child_shas = getattr(commit, 'child_shas', [])
+            if len(child_shas) < 2:
+                # Need at least 2 children to be a fork point
+                continue
+            
+            # Check which children are on different lanes than this commit
+            forked_lanes = set()
+            for child_sha in child_shas:
+                if child_sha in self.graph.commits:
+                    child = self.graph.commits[child_sha]
+                    child_lane = getattr(child, 'lane', 0)
+                    
+                    # Only count as forked if child is on a different lane
+                    # AND this commit is the child's first parent (not a merge)
+                    child_parents = getattr(child, 'parent_shas', [])
+                    if child_parents and child_parents[0] == commit.sha:
+                        if child_lane != commit.lane:
+                            forked_lanes.add(child_lane)
+            
+            # Mark as fork point if we have lanes forking off
+            if forked_lanes:
+                commit.is_fork_point = True
+                commit.forked_lanes = sorted(forked_lanes)
     
     def _build_edges(self) -> None:
         """Build edges between commits based on parent-child relationships."""

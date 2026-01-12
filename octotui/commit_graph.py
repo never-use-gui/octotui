@@ -57,6 +57,14 @@ class GitGraphRenderer:
         self.DIAGONAL_RIGHT = "╱"    # Diagonal up-right
         self.DIAGONAL_LEFT = "╲"     # Diagonal down-right
         
+        # T-junction characters for GitKraken-style grouped rails
+        self.T_UP = "┴"              # T-junction, vertical goes up (used at fork rail)
+        self.T_DOWN = "┬"            # T-junction, vertical goes down
+        self.T_LEFT = "┤"            # T-junction, horizontal goes left (rail end)
+        self.T_RIGHT = "├"           # T-junction, horizontal goes right (rail start)
+        self.CORNER_TOP_RIGHT = "┐"  # Corner for rail end
+        self.CORNER_TOP_LEFT = "┌"   # Corner for rail start
+        
         # Depth-based colors
         self.depth_colors = [
             "#89b4fa",  # L0: Blue (main)
@@ -181,7 +189,11 @@ class GitGraphRenderer:
             
             # Detect branch-out: when commit's parent is on a different lane
             # This indicates a branch starting point (not a merge)
+            # 
+            # GitKraken-style: If parent is a fork point, suppress individual branch-out
+            # (the rail will be drawn at the fork point instead)
             branch_from_lane = None
+            parent_is_fork_point = False
             if not is_merge and self.graph is not None:
                 parent_shas = getattr(commit, 'parent_shas', [])
                 if parent_shas:
@@ -189,19 +201,34 @@ class GitGraphRenderer:
                     if first_parent_sha in self.graph.commits:
                         parent = self.graph.commits[first_parent_sha]
                         parent_lane = getattr(parent, 'lane', 0)
+                        parent_is_fork_point = getattr(parent, 'is_fork_point', False)
+                        parent_forked_lanes = getattr(parent, 'forked_lanes', [])
+                        
                         if parent_lane != commit_lane:
-                            branch_from_lane = parent_lane
+                            # Check if parent is a fork point that includes our lane
+                            if parent_is_fork_point and commit_lane in parent_forked_lanes:
+                                # Suppress individual branch-out - rail is at fork point
+                                branch_from_lane = None
+                            else:
+                                # Normal branch-out (not part of grouped rail)
+                                branch_from_lane = parent_lane
+            
+            # Check if THIS commit is a fork point (draw grouped rail)
+            is_fork_point = getattr(commit, 'is_fork_point', False)
+            forked_lanes = getattr(commit, 'forked_lanes', [])
             
             # Build columns for each lane
             columns = []
             
             # Determine which lanes need to be shown
-            # Include: commit lane, active lanes, merge source lanes, branch source lane
+            # Include: commit lane, active lanes, merge source lanes, branch source lane, forked lanes
             lanes_to_show = set([commit_lane])
             lanes_to_show.update(active_lanes)
             lanes_to_show.update(merge_source_lanes)
             if branch_from_lane is not None:
                 lanes_to_show.add(branch_from_lane)
+            if is_fork_point:
+                lanes_to_show.update(forked_lanes)
             
             # Calculate display range (0 to max of all relevant lanes + 1)
             display_max = max(lanes_to_show) + 1 if lanes_to_show else 1
@@ -250,10 +277,15 @@ class GitGraphRenderer:
                 # Join without spaces in merge zones for continuous horizontal lines
                 return self._join_columns_for_merge(columns, commit_lane, merge_source_lanes)
             
-            # Add horizontal branch-out connections
+            # Add horizontal branch-out connections (individual style)
             if branch_from_lane is not None:
                 columns = self._add_branch_out_connections(columns, commit_lane, branch_from_lane, active_lanes)
                 return self._join_columns_for_branch(columns, commit_lane, branch_from_lane)
+            
+            # Add grouped fork point rail (GitKraken style)
+            if is_fork_point and forked_lanes:
+                columns = self._add_fork_point_rail(columns, commit_lane, forked_lanes, active_lanes)
+                return self._join_columns_for_fork_rail(columns, commit_lane, forked_lanes)
             
             return " ".join(columns)
             
@@ -476,6 +508,118 @@ class GitGraphRenderer:
                 # Outside branch zone: insert space
                 if current_in_zone and next_in_zone:
                     output_parts.append(f"[{branch_color}]{self.HORIZONTAL}[/{branch_color}]")
+                else:
+                    output_parts.append(" ")
+        
+        return "".join(output_parts)
+    
+    def _add_fork_point_rail(self, columns: list, commit_lane: int,
+                             forked_lanes: list, active_lanes: set) -> list:
+        """Add grouped horizontal rail at fork point (GitKraken style).
+        
+        Instead of drawing individual branch-out lines at each branch's first commit,
+        this draws ONE shared horizontal rail at the fork point, with T-junctions
+        where branches fork off.
+        
+        Visual effect:
+        ├──┬──┬──┘  (rail from commit lane to max forked lane)
+        
+        Args:
+            columns: List of column strings (already populated)
+            commit_lane: The lane where the fork point commit is
+            forked_lanes: Lanes that fork off from this commit
+            active_lanes: Currently active lanes
+            
+        Returns:
+            Updated columns list with fork rail
+        """
+        try:
+            result = []
+            max_forked_lane = max(forked_lanes) if forked_lanes else commit_lane
+            min_forked_lane = min(forked_lanes) if forked_lanes else commit_lane
+            
+            # Determine rail extent (from commit lane to furthest forked lane)
+            rail_min = min(commit_lane, min_forked_lane)
+            rail_max = max(commit_lane, max_forked_lane)
+            
+            for lane, col in enumerate(columns):
+                color = self.get_color_for_lane(lane)
+                
+                if lane == commit_lane:
+                    # Fork point commit - show T-junction going toward forked lanes
+                    # ├ if forking to the right, ┤ if forking to the left
+                    if max_forked_lane > commit_lane:
+                        result.append(f"[{color}]{self.T_RIGHT}[/{color}]")
+                    else:
+                        result.append(f"[{color}]{self.T_LEFT}[/{color}]")
+                elif lane in forked_lanes:
+                    # This lane forks off - show T-junction going up (┴)
+                    # Use the forked lane's color
+                    forked_color = self.get_color_for_lane(lane)
+                    if lane == rail_max:
+                        # Rightmost forked lane - use corner ┐ or ┘
+                        result.append(f"[{forked_color}]{self.CORNER_TOP_RIGHT}[/{forked_color}]")
+                    else:
+                        # Middle forked lane - use T-junction ┬ (going down to future commits)
+                        result.append(f"[{forked_color}]{self.T_DOWN}[/{forked_color}]")
+                elif rail_min < lane < rail_max:
+                    # Lane is in the rail zone but not a fork point
+                    if lane in active_lanes:
+                        # Cross with active lane - use cross ┼
+                        result.append(f"[{color}]{self.CROSS}[/{color}]")
+                    else:
+                        # Just horizontal line
+                        result.append(f"[{color}]{self.HORIZONTAL}[/{color}]")
+                else:
+                    # Not involved in fork rail - keep original
+                    result.append(col)
+            
+            return result
+            
+        except Exception:
+            return columns
+    
+    def _join_columns_for_fork_rail(self, columns: list, commit_lane: int,
+                                     forked_lanes: list) -> str:
+        """Join columns with horizontal line characters for fork rail visualization.
+        
+        Creates continuous horizontal lines in the fork rail zone for
+        GitKraken-style grouped branch-out.
+        
+        Args:
+            columns: List of column strings with Rich markup
+            commit_lane: The lane where the fork point commit is
+            forked_lanes: Lanes that fork off from this commit
+            
+        Returns:
+            Joined string with horizontal lines in rail zone, spaces elsewhere
+        """
+        if not columns:
+            return ""
+        
+        max_forked_lane = max(forked_lanes) if forked_lanes else commit_lane
+        min_forked_lane = min(forked_lanes) if forked_lanes else commit_lane
+        
+        # Rail extent
+        rail_min = min(commit_lane, min_forked_lane)
+        rail_max = max(commit_lane, max_forked_lane)
+        
+        # Use commit lane color for the rail
+        rail_color = self.get_color_for_lane(commit_lane)
+        output_parts = []
+        
+        for i, col in enumerate(columns):
+            output_parts.append(col)
+            
+            # Determine what separator to add after this column
+            if i < len(columns) - 1:
+                current_in_rail = rail_min <= i <= rail_max
+                next_in_rail = rail_min <= (i + 1) <= rail_max
+                
+                # In rail zone: insert horizontal line character
+                # Outside rail zone: insert space
+                if current_in_rail and next_in_rail:
+                    output_parts.append(f"[{rail_color}]{self.HORIZONTAL}[/{rail_color}]")
                 else:
                     output_parts.append(" ")
         
