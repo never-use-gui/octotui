@@ -41,13 +41,15 @@ class GitGraphRenderer:
         self.COMMIT_DOT = "●"        # Solid circle for commits
         self.MERGE_DOT = "◆"         # Diamond for merge commits
         self.BRANCH_CHAR = "├─"     # Branch indicator
-        self.MERGE_CHAR = "└─"      # Merge indicator
+        self.MERGE_CHAR = "╰─"      # Curved merge indicator
         self.MAIN_LINE = "──"        # Main timeline indicator
         self.SPACE = " "             # Space character
         
-        # Multi-lane merge visualization characters
-        self.MERGE_LEFT = "└"        # Merge line coming from right
-        self.MERGE_RIGHT = "┘"       # Merge line coming from left
+        # Multi-lane merge visualization characters (curved for smoother look)
+        self.MERGE_LEFT = "╰"        # Curved merge line coming from right
+        self.MERGE_RIGHT = "╯"       # Curved merge line coming from left
+        self.CURVE_TOP_LEFT = "╭"    # Curved top-left (branch start)
+        self.CURVE_TOP_RIGHT = "╮"   # Curved top-right (branch start)
         self.HORIZONTAL = "─"        # Horizontal merge line
         self.CROSS = "┼"             # Crossing lines
         self.BRANCH_DOWN = "┬"       # Branch going down
