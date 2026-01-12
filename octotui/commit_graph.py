@@ -292,7 +292,12 @@ class GitGraphRenderer:
             
             # Build graph part with depth notation and validation
             try:
-                graph_part = self._build_depth_graph_part(commit, depth, commit_symbol, commit_color)
+                # Use multi-lane graph columns if graph context is available
+                if self.graph is not None:
+                    graph_part = self._build_graph_columns(commit)
+                else:
+                    # Fallback to depth-based rendering if no graph context
+                    graph_part = self._build_depth_graph_part(commit, depth, commit_symbol, commit_color)
             except Exception as graph_error:
                 # Fallback to simple format if graph part fails
                 graph_part = f"[#89b4fa]{commit_symbol} │[/#89b4fa]"
@@ -869,8 +874,8 @@ class CommitGraphWidget(Widget):
             layout_engine = GraphLayoutEngine(self.repo)
             self.graph = layout_engine.build_graph(max_commits=self.max_commits)
             
-            # Initialize fresh renderer
-            self.renderer = GitGraphRenderer()
+            # Initialize fresh renderer with graph context for multi-lane rendering
+            self.renderer = GitGraphRenderer(graph=self.graph)
             
             # Render the graph
             self._render_graph()
@@ -902,8 +907,8 @@ class CommitGraphWidget(Widget):
                 scroll.mount(Static("No commits match the filter", classes="info"))
                 return
             
-            # Create fresh renderer for each render
-            self.renderer = GitGraphRenderer()
+            # Create fresh renderer for each render with graph context
+            self.renderer = GitGraphRenderer(graph=self.graph)
             
             # Set up depth calculations if we have graph data
             try:
@@ -946,7 +951,7 @@ class CommitGraphWidget(Widget):
                     if hasattr(self.renderer, 'reset'):
                         self.renderer.reset()
                     else:
-                        self.renderer = GitGraphRenderer()
+                        self.renderer = GitGraphRenderer(graph=self.graph)
         
         except Exception as e:
             self.notify(f"Error rendering graph: {e}", severity="error")
