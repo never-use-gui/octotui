@@ -220,6 +220,8 @@ class GitGraphRenderer:
             # Rebuild with horizontal lines for merge visualization
             if merge_source_lanes and is_merge:
                 columns = self._add_merge_connections(columns, commit_lane, merge_source_lanes, active_lanes)
+                # Join without spaces in merge zones for continuous horizontal lines
+                return self._join_columns_for_merge(columns, commit_lane, merge_source_lanes)
             
             return " ".join(columns)
             
@@ -300,6 +302,45 @@ class GitGraphRenderer:
             if min_lane < lane < max_lane:
                 return True
         return False
+    
+    def _join_columns_for_merge(self, columns: list, commit_lane: int,
+                                 merge_source_lanes: list) -> str:
+        """Join columns with smart spacing for continuous horizontal merge lines.
+        
+        For merge commits, we want horizontal lines (─) to be continuous without
+        spaces between them. This method joins columns without spaces when both
+        the current and next column are within the "merge zone".
+        
+        Args:
+            columns: List of column strings with Rich markup
+            commit_lane: The lane where the merge commit is
+            merge_source_lanes: Lanes that are merging into this commit
+            
+        Returns:
+            Joined string with appropriate spacing
+        """
+        if not columns:
+            return ""
+        
+        # Find the full extent of the merge zone (min to max of all involved lanes)
+        all_merge_lanes = [commit_lane] + list(merge_source_lanes)
+        min_merge_lane = min(all_merge_lanes)
+        max_merge_lane = max(all_merge_lanes)
+        
+        output_parts = []
+        for i, col in enumerate(columns):
+            output_parts.append(col)
+            
+            # Add space after this column unless both this and next are in merge zone
+            if i < len(columns) - 1:
+                current_in_zone = min_merge_lane <= i <= max_merge_lane
+                next_in_zone = min_merge_lane <= (i + 1) <= max_merge_lane
+                
+                # No space if both are in the merge zone (continuous horizontal)
+                if not (current_in_zone and next_in_zone):
+                    output_parts.append(" ")
+        
+        return "".join(output_parts)
     
     def render_commit_line(self, commit: CommitNode, max_width: int = 80) -> str:
         """Render a clean single-line commit visualization with branch labels in left column.
