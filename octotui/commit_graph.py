@@ -271,22 +271,31 @@ class GitGraphRenderer:
                     # Empty lane
                     columns.append(self.SPACE)
             
-            # Now add horizontal merge connections between commit and merge sources
-            # Rebuild with horizontal lines for merge visualization
+            # Apply merge connections (modifies columns in place)
+            # NOTE: Do NOT return early - fork rail may also need to run!
             if merge_source_lanes and is_merge:
                 columns = self._add_merge_connections(columns, commit_lane, merge_source_lanes, active_lanes)
-                # Join without spaces in merge zones for continuous horizontal lines
-                return self._join_columns_for_merge(columns, commit_lane, merge_source_lanes)
             
-            # Add horizontal branch-out connections (individual style)
+            # Apply fork rail connections (modifies columns in place)
+            # This NOW RUNS EVEN FOR MERGES - _add_fork_point_rail preserves merge corners
+            if is_fork_point and forked_lanes:
+                columns = self._add_fork_point_rail(columns, commit_lane, forked_lanes, active_lanes)
+            
+            # Join columns - use appropriate join based on what was applied
+            if merge_source_lanes and is_merge and is_fork_point and forked_lanes:
+                # Both merge AND fork - use combined join covering both zones
+                return self._join_columns_for_merge_and_fork(columns, commit_lane, merge_source_lanes, forked_lanes)
+            elif merge_source_lanes and is_merge:
+                # Merge only
+                return self._join_columns_for_merge(columns, commit_lane, merge_source_lanes)
+            elif is_fork_point and forked_lanes:
+                # Fork rail only
+                return self._join_columns_for_fork_rail(columns, commit_lane, forked_lanes)
+            
+            # Add horizontal branch-out connections (individual style, not merge/fork)
             if branch_from_lane is not None:
                 columns = self._add_branch_out_connections(columns, commit_lane, branch_from_lane, active_lanes)
                 return self._join_columns_for_branch(columns, commit_lane, branch_from_lane)
-            
-            # Add grouped fork point rail (GitKraken style)
-            if is_fork_point and forked_lanes:
-                columns = self._add_fork_point_rail(columns, commit_lane, forked_lanes, active_lanes)
-                return self._join_columns_for_fork_rail(columns, commit_lane, forked_lanes)
             
             return " ".join(columns)
             
@@ -404,6 +413,58 @@ class GitGraphRenderer:
                 # In merge zone: insert horizontal line character for visible connection
                 # Outside merge zone: insert space for normal spacing
                 if current_in_zone and next_in_zone:
+                    output_parts.append(f"[{self.merge_color}]{self.HORIZONTAL}[/{self.merge_color}]")
+                else:
+                    output_parts.append(" ")
+        
+        return "".join(output_parts)
+    
+    def _join_columns_for_merge_and_fork(self, columns: list, commit_lane: int,
+                                          merge_source_lanes: list, forked_lanes: list) -> str:
+        """Join columns with horizontal lines for commits that are BOTH merges AND fork points.
+        
+        This handles the case where a commit has merge sources coming in AND branches
+        forking out. The join zone is the UNION of both the merge zone and fork zone.
+        
+        Args:
+            columns: List of column strings with Rich markup
+            commit_lane: The lane where the commit is
+            merge_source_lanes: Lanes that are merging into this commit
+            forked_lanes: Lanes that fork off from this commit
+            
+        Returns:
+            Joined string with horizontal lines in combined zone, spaces elsewhere
+        """
+        if not columns:
+            return ""
+        
+        # Calculate merge zone extent
+        all_merge_lanes = [commit_lane] + list(merge_source_lanes)
+        min_merge_lane = min(all_merge_lanes)
+        max_merge_lane = max(all_merge_lanes)
+        
+        # Calculate fork zone extent
+        all_fork_lanes = [commit_lane] + list(forked_lanes)
+        min_fork_lane = min(all_fork_lanes)
+        max_fork_lane = max(all_fork_lanes)
+        
+        # Combined zone is the UNION of both zones
+        zone_min = min(min_merge_lane, min_fork_lane)
+        zone_max = max(max_merge_lane, max_fork_lane)
+        
+        output_parts = []
+        for i, col in enumerate(columns):
+            output_parts.append(col)
+            
+            # Determine what separator to add after this column
+            if i < len(columns) - 1:
+                current_in_zone = zone_min <= i <= zone_max
+                next_in_zone = zone_min <= (i + 1) <= zone_max
+                
+                # In combined zone: insert horizontal line character
+                # Outside zone: insert space
+                if current_in_zone and next_in_zone:
+                    # Use merge color for horizontal lines in combined mode
                     output_parts.append(f"[{self.merge_color}]{self.HORIZONTAL}[/{self.merge_color}]")
                 else:
                     output_parts.append(" ")
