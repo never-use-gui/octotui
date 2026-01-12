@@ -20,7 +20,15 @@ from octotui.graph_layout import GraphLayoutEngine
 class GitGraphRenderer:
     """Render clean single-line commit graph with branch depth indicators."""
     
-    def __init__(self):
+    def __init__(self, graph: 'CommitGraph' = None):
+        """Initialize the renderer.
+        
+        Args:
+            graph: Optional CommitGraph for multi-lane rendering context
+        """
+        # Graph context for multi-lane rendering
+        self.graph = graph
+        
         # Depth and hierarchy tracking
         self.commit_depths = {}  # sha -> depth level
         self.parent_depths = {}  # sha -> parent depth for calculations
@@ -37,6 +45,16 @@ class GitGraphRenderer:
         self.MAIN_LINE = "──"        # Main timeline indicator
         self.SPACE = " "             # Space character
         
+        # Multi-lane merge visualization characters
+        self.MERGE_LEFT = "└"        # Merge line coming from right
+        self.MERGE_RIGHT = "┘"       # Merge line coming from left
+        self.HORIZONTAL = "─"        # Horizontal merge line
+        self.CROSS = "┼"             # Crossing lines
+        self.BRANCH_DOWN = "┬"       # Branch going down
+        self.MERGE_UP = "┴"          # Merge going up
+        self.DIAGONAL_RIGHT = "╱"    # Diagonal up-right
+        self.DIAGONAL_LEFT = "╲"     # Diagonal down-right
+        
         # Depth-based colors
         self.depth_colors = [
             "#89b4fa",  # L0: Blue (main)
@@ -46,8 +64,196 @@ class GitGraphRenderer:
             "#94e2d5",  # L4+: Cyan (deeper levels)
         ]
         
+        # Default lane colors (matching graph palette)
+        self.default_colors = [
+            "#bb9af7",  # Purple
+            "#9ece6a",  # Green
+            "#7dcfff",  # Blue
+            "#f7768e",  # Red
+            "#ff9e64",  # Orange
+            "#e0af68",  # Yellow
+            "#73daca",  # Cyan
+            "#c0caf5",  # Light blue
+        ]
+        
         # Special colors
         self.merge_color = "#f38ba8"  # Red for merges
+    
+    def set_graph(self, graph: 'CommitGraph') -> None:
+        """Set the graph for multi-lane rendering.
+        
+        Args:
+            graph: CommitGraph to use for rendering context
+        """
+        self.graph = graph
+    
+    def get_max_lanes(self) -> int:
+        """Get the maximum number of lanes in the graph.
+        
+        Returns:
+            Maximum lane count, defaults to 1 if no graph
+        """
+        if self.graph is not None:
+            return max(1, self.graph.max_lanes)
+        return 1
+    
+    def get_color_for_lane(self, lane: int) -> str:
+        """Get color for a specific lane.
+        
+        Args:
+            lane: Lane number
+            
+        Returns:
+            Color hex string for this lane
+        """
+        if self.graph is not None and hasattr(self.graph, 'colors'):
+            return self.graph.colors[lane % len(self.graph.colors)]
+        return self.default_colors[lane % len(self.default_colors)]
+    
+    def _build_graph_columns(self, commit: CommitNode) -> str:
+        """Build the graph column visualization for multi-lane rendering.
+        
+        Creates a visual representation of the graph lanes at this commit's row,
+        showing:
+        - Commit dot (● or ◆) in the commit's lane
+        - Vertical lines (│) for active lanes
+        - Merge indicators (└─) for lanes merging into this commit
+        
+        Args:
+            commit: The commit node to render
+            
+        Returns:
+            Formatted string with colored graph columns
+            
+        Example outputs:
+            "● │ │"  - Commit in lane 0, active lanes 1 and 2
+            "│ ◆─┘"  - Merge commit in lane 1, merge from lane 2
+            "│ │ ●"  - Commit in lane 2, active lanes 0 and 1
+        """
+        try:
+            max_lanes = self.get_max_lanes()
+            commit_lane = getattr(commit, 'lane', 0)
+            active_lanes = getattr(commit, 'active_lanes', set())
+            merge_source_lanes = getattr(commit, 'merge_source_lanes', [])
+            
+            # Determine commit symbol
+            is_merge = commit.is_merge() if hasattr(commit, 'is_merge') else len(getattr(commit, 'parent_shas', [])) > 1
+            commit_symbol = self.MERGE_DOT if is_merge else self.COMMIT_DOT
+            
+            # Build columns for each lane
+            columns = []
+            
+            # Determine which lanes need to be shown
+            # Include: commit lane, active lanes, merge source lanes
+            lanes_to_show = set([commit_lane])
+            lanes_to_show.update(active_lanes)
+            lanes_to_show.update(merge_source_lanes)
+            
+            # Calculate display range (0 to max of all relevant lanes + 1)
+            display_max = max(lanes_to_show) + 1 if lanes_to_show else 1
+            display_max = max(display_max, max_lanes)
+            
+            for lane in range(display_max):
+                color = self.get_color_for_lane(lane)
+                
+                if lane == commit_lane:
+                    # This is the commit's lane - show commit symbol
+                    columns.append(f"[{color}]{commit_symbol}[/{color}]")
+                elif lane in merge_source_lanes:
+                    # This lane is merging into the commit
+                    # Show merge indicator pointing toward the commit
+                    if lane > commit_lane:
+                        # Merge coming from the right - use └ and horizontal line
+                        columns.append(f"[{self.merge_color}]{self.MERGE_LEFT}[/{self.merge_color}]")
+                    else:
+                        # Merge coming from the left - use ┘
+                        columns.append(f"[{self.merge_color}]{self.MERGE_RIGHT}[/{self.merge_color}]")
+                elif lane in active_lanes:
+                    # Active lane - show vertical line
+                    columns.append(f"[{color}]{self.VERTICAL_LINE}[/{color}]")
+                else:
+                    # Empty lane
+                    columns.append(self.SPACE)
+            
+            # Now add horizontal merge connections between commit and merge sources
+            # Rebuild with horizontal lines for merge visualization
+            if merge_source_lanes and is_merge:
+                columns = self._add_merge_connections(columns, commit_lane, merge_source_lanes, active_lanes)
+            
+            return " ".join(columns)
+            
+        except Exception as e:
+            # Fallback to simple single-lane rendering
+            commit_symbol = self.MERGE_DOT if getattr(commit, 'is_merge', lambda: False)() else self.COMMIT_DOT
+            return f"[{self.line_color}]{commit_symbol} {self.VERTICAL_LINE}[/{self.line_color}]"
+    
+    def _add_merge_connections(self, columns: list, commit_lane: int, 
+                                merge_source_lanes: list, active_lanes: set) -> list:
+        """Add horizontal merge connection lines between commit and merge sources.
+        
+        This enhances the column visualization to show clear merge paths:
+        - Horizontal lines (─) between merge commit and source lanes
+        - Proper corner characters (└ ┘) at the source lanes
+        
+        Args:
+            columns: List of column strings (already populated)
+            commit_lane: The lane where the merge commit is
+            merge_source_lanes: Lanes that are merging into this commit
+            active_lanes: Currently active lanes
+            
+        Returns:
+            Updated columns list with merge connections
+        """
+        try:
+            result = []
+            
+            for lane, col in enumerate(columns):
+                color = self.get_color_for_lane(lane)
+                
+                if lane == commit_lane:
+                    # Commit lane - keep the merge dot
+                    result.append(col)
+                elif lane in merge_source_lanes:
+                    # Source lane - show corner merging toward commit
+                    if lane > commit_lane:
+                        result.append(f"[{self.merge_color}]{self.MERGE_LEFT}[/{self.merge_color}]")
+                    else:
+                        result.append(f"[{self.merge_color}]{self.MERGE_RIGHT}[/{self.merge_color}]")
+                elif self._is_between_merge_and_source(lane, commit_lane, merge_source_lanes):
+                    # Lane is between commit and a merge source - show horizontal line
+                    if lane in active_lanes:
+                        # Cross with active lane
+                        result.append(f"[{self.merge_color}]{self.CROSS}[/{self.merge_color}]")
+                    else:
+                        # Just horizontal line
+                        result.append(f"[{self.merge_color}]{self.HORIZONTAL}[/{self.merge_color}]")
+                else:
+                    # Not involved in merge - keep original
+                    result.append(col)
+            
+            return result
+            
+        except Exception:
+            return columns
+    
+    def _is_between_merge_and_source(self, lane: int, commit_lane: int, 
+                                      merge_source_lanes: list) -> bool:
+        """Check if a lane is between the merge commit and any of its source lanes.
+        
+        Args:
+            lane: Lane to check
+            commit_lane: Merge commit's lane
+            merge_source_lanes: List of source lanes
+            
+        Returns:
+            True if lane is between commit and any source
+        """
+        for source_lane in merge_source_lanes:
+            min_lane = min(commit_lane, source_lane)
+            max_lane = max(commit_lane, source_lane)
+            if min_lane < lane < max_lane:
+                return True
+        return False
     
     def render_commit_line(self, commit: CommitNode, max_width: int = 80) -> str:
         """Render a clean single-line commit visualization with branch depth indicators.
